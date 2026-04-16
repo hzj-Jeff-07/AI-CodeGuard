@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.codeguard-cache/
+.claude/
+*.tsbuildinfo
+.env
+.env.local
+coverage/

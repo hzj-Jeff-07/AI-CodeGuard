@@ -1,0 +1,28 @@
+# Vulnerable: SQL Injection (CG-001) - Python
+import sqlite3
+
+def get_user(user_id):
+    conn = sqlite3.connect('app.db')
+    cursor = conn.cursor()
+    cursor.execute(f"SELECT * FROM users WHERE id = '{user_id}'")
+    return cursor.fetchone()
+
+# Vulnerable: Command Injection (CG-002) - Python
+import os
+import subprocess
+
+def run_command(user_input):
+    os.system("ls " + user_input)
+
+def ping_host(host):
+    subprocess.call(f"ping -c 4 {host}", shell=True)
+
+# Vulnerable: Insecure Deserialization (CG-041) - Python
+import pickle
+import yaml
+
+def load_data(data):
+    return pickle.loads(data)
+
+def load_config(config_str):
+    return yaml.load(config_str)
