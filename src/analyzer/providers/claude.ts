@@ -1,5 +1,17 @@
 import Anthropic from '@anthropic-ai/sdk';
 
+let cachedClient: Anthropic | null = null;
+let cachedApiKey: string | null = null;
+
+function getClient(apiKey: string): Anthropic {
+  if (cachedClient && cachedApiKey === apiKey) {
+    return cachedClient;
+  }
+  cachedClient = new Anthropic({ apiKey });
+  cachedApiKey = apiKey;
+  return cachedClient;
+}
+
 export async function analyzeWithClaude(request: {
   model: string;
   apiKey: string;
@@ -10,7 +22,7 @@ export async function analyzeWithClaude(request: {
   inputTokens: number;
   outputTokens: number;
 }> {
-  const client = new Anthropic({ apiKey: request.apiKey });
+  const client = getClient(request.apiKey);
 
   const response = await client.messages.create({
     model: request.model,

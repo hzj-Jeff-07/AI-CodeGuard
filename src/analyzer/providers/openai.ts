@@ -1,5 +1,17 @@
 import OpenAI from 'openai';
 
+let cachedClient: OpenAI | null = null;
+let cachedApiKey: string | null = null;
+
+function getClient(apiKey: string): OpenAI {
+  if (cachedClient && cachedApiKey === apiKey) {
+    return cachedClient;
+  }
+  cachedClient = new OpenAI({ apiKey });
+  cachedApiKey = apiKey;
+  return cachedClient;
+}
+
 export async function analyzeWithOpenAI(request: {
   model: string;
   apiKey: string;
@@ -10,7 +22,7 @@ export async function analyzeWithOpenAI(request: {
   inputTokens: number;
   outputTokens: number;
 }> {
-  const client = new OpenAI({ apiKey: request.apiKey });
+  const client = getClient(request.apiKey);
 
   const response = await client.chat.completions.create({
     model: request.model,

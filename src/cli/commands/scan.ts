@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { loadConfig } from '../../config/index.js';
 import { scan } from '../../scanner/index.js';
-import type { OutputFormat } from '../../types/index.js';
+import type { OutputFormat, Severity } from '../../types/index.js';
 
 export function createScanCommand(): Command {
   return new Command('scan')
@@ -12,6 +12,7 @@ export function createScanCommand(): Command {
     .option('--fix', 'Generate fix suggestions (requires LLM)', false)
     .option('--dry-run', 'Run AST pre-filter only, no LLM calls', false)
     .option('--config <path>', 'Path to config file')
+    .option('-s, --severity <level>', 'Minimum severity: low, medium, high, critical')
     .option('-v, --verbose', 'Verbose output', false)
     .action(async (paths: string[], opts) => {
       try {
@@ -28,6 +29,7 @@ export function createScanCommand(): Command {
           output: outputFormat,
           outputFile: opts.outputFile ?? config.output.file,
           verbose: opts.verbose,
+          minSeverity: opts.severity as Severity | undefined,
         });
 
         // Exit with non-zero if critical/high findings exist

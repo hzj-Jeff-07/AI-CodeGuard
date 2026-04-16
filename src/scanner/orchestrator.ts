@@ -1,11 +1,18 @@
 import fg from 'fast-glob';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { relative } from 'node:path';
-import type { CodeGuardConfig, ScanResult, Finding, SuspiciousNode, SkippedFile, OutputFormat } from '../types/index.js';
+import type { CodeGuardConfig, ScanResult, Finding, SuspiciousNode, SkippedFile, OutputFormat, Severity } from '../types/index.js';
 import { parse, detectLanguage, getSupportedExtensions } from '../parser/index.js';
 import { loadRules, runRules } from '../rules/index.js';
 import { generateReport } from '../reporter/index.js';
 import { analyzeFindings, type AnalyzeFindingsDependencies } from '../analyzer/index.js';
+
+const SEVERITY_RANK: Record<Severity, number> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+};
 
 export interface ScanOptions {
   paths: string[];
@@ -15,6 +22,7 @@ export interface ScanOptions {
   output: OutputFormat;
   outputFile?: string;
   verbose: boolean;
+  minSeverity?: Severity;
 }
 
 export async function scan(
@@ -73,6 +81,11 @@ export async function scan(
     estimatedCost = analyzed.estimatedCost;
   }
 
+  if (options.minSeverity) {
+    const minRank = SEVERITY_RANK[options.minSeverity];
+    findings = findings.filter(f => SEVERITY_RANK[f.severity] >= minRank);
+  }
+
   const result: ScanResult = {
     files: files.length,
     suspicious: allSuspicious.length,
@@ -117,13 +130,25 @@ async function discoverFiles(
   paths: string[],
   config: CodeGuardConfig,
 ): Promise<string[]> {
-  const patterns = paths.length > 0
-    ? paths.map(p => {
+  let patterns: string[];
+  if (paths.length > 0) {
+    const expanded: string[][] = await Promise.all(
+      paths.map(async p => {
         const normalizedPath = p.replace(/\\/g, '/');
-        if (normalizedPath.includes('.')) return normalizedPath;
+        try {
+          const info = await stat(p);
+          if (info.isFile()) return [normalizedPath];
+        } catch {
+          // Path doesn't exist yet — treat as glob pattern
+          return [normalizedPath];
+        }
         return config.scan.include.map(inc => `${normalizedPath}/${inc}`);
-      }).flat()
-    : config.scan.include;
+      }),
+    );
+    patterns = expanded.flat();
+  } else {
+    patterns = config.scan.include;
+  }
 
   const supportedExts = getSupportedExtensions();
 
