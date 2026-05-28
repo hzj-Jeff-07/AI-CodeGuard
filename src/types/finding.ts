@@ -46,6 +46,7 @@ export interface ScanResult {
   duration: number;
   llmCalls: number;
   estimatedCost: number;
+  cacheHits: number;
 }
 
 export interface SkippedFile {

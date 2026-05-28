@@ -101,5 +101,6 @@ function formatSummary(result: ScanResult): string {
     `  ${chalk.bold('Summary:')} ${summaryStr}`,
     `  Files scanned: ${result.files}  |  Suspicious: ${result.suspicious}  |  Duration: ${duration}s`,
     result.llmCalls > 0 ? `  LLM calls: ${result.llmCalls}  |  Estimated cost: $${result.estimatedCost.toFixed(2)}` : '',
+    result.cacheHits > 0 ? `  Cache hits: ${result.cacheHits}` : '',
   ].filter(Boolean).join('\n');
 }

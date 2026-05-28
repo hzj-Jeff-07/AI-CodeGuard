@@ -13,6 +13,7 @@ function makeScanResult(findings: Finding[] = [], overrides: Partial<ScanResult>
     duration: 1234,
     llmCalls: 0,
     estimatedCost: 0,
+    cacheHits: 0,
     ...overrides,
   };
 }

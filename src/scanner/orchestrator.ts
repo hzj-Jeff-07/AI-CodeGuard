@@ -1,11 +1,12 @@
 import fg from 'fast-glob';
 import { readFile, stat } from 'node:fs/promises';
-import { relative } from 'node:path';
+import { relative, resolve } from 'node:path';
 import type { CodeGuardConfig, ScanResult, Finding, SuspiciousNode, SkippedFile, OutputFormat, Severity } from '../types/index.js';
 import { parse, detectLanguage, getSupportedExtensions } from '../parser/index.js';
 import { loadRules, runRules } from '../rules/index.js';
 import { generateReport } from '../reporter/index.js';
 import { analyzeFindings, type AnalyzeFindingsDependencies } from '../analyzer/index.js';
+import { FileCacheStore } from '../cache/index.js';
 
 const SEVERITY_RANK: Record<Severity, number> = {
   critical: 4,
@@ -67,18 +68,28 @@ export async function scan(
   let findings = stage1Findings;
   let llmCalls = 0;
   let estimatedCost = 0;
+  let cacheHits = 0;
 
   if (!options.dryRun && allSuspicious.length > 0) {
+    const mergedDependencies: AnalyzeFindingsDependencies = { ...dependencies };
+    if (!mergedDependencies.cache && options.config.cache.enabled) {
+      mergedDependencies.cache = new FileCacheStore({
+        directory: resolve(process.cwd(), options.config.cache.directory),
+        ttlSeconds: options.config.cache.ttl,
+      });
+    }
+
     const analyzed = await analyzeFindings({
       findings: stage1Findings,
       suspiciousNodes: allSuspicious,
       llm: options.config.llm,
       fix: options.fix,
-    }, dependencies);
+    }, mergedDependencies);
 
     findings = analyzed.findings;
     llmCalls = analyzed.llmCalls;
     estimatedCost = analyzed.estimatedCost;
+    cacheHits = analyzed.cacheHits;
   }
 
   if (options.minSeverity) {
@@ -94,6 +105,7 @@ export async function scan(
     duration: Date.now() - startTime,
     llmCalls,
     estimatedCost,
+    cacheHits,
   };
 
   const report = await generateReport(result, options.output, options.outputFile);

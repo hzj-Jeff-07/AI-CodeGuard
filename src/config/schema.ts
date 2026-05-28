@@ -26,7 +26,7 @@ export const ConfigSchema = z.object({
   }).default({}),
 
   cache: z.object({
-    enabled: z.boolean().default(true),
+    enabled: z.boolean().default(false),
     directory: z.string().default('.codeguard-cache'),
     ttl: z.number().default(86400),
   }).default({}),

@@ -18,7 +18,7 @@ export const DEFAULT_CONFIG: CodeGuardConfig = {
     format: 'text',
   },
   cache: {
-    enabled: true,
+    enabled: false,
     directory: '.codeguard-cache',
     ttl: 86400,
   },

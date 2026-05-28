@@ -9,6 +9,7 @@ export function formatJSON(result: ScanResult): string {
       duration: result.duration,
       llmCalls: result.llmCalls,
       estimatedCost: result.estimatedCost,
+      cacheHits: result.cacheHits,
     },
     findings: result.findings.map(f => ({
       id: f.id,

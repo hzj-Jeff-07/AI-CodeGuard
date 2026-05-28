@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { analyzeFindings, type AnalyzeWithLLM } from '../../src/analyzer/index.js';
+import { MemoryCacheStore } from '../../src/cache/index.js';
 import type { ASTNode, Finding, LLMConfig, SuspiciousNode } from '../../src/types/index.js';
 
 function makeNode(): ASTNode {
@@ -176,5 +177,101 @@ describe('analyzeFindings', () => {
     expect(result.findings).toHaveLength(3);
     expect(result.findings.filter(finding => finding.llmAnalysis)).toHaveLength(1);
     expect(result.findings.filter(finding => !finding.llmAnalysis)).toHaveLength(2);
+  });
+
+  it('skips LLM calls when cache hits', async () => {
+    let providerCalls = 0;
+    const provider: AnalyzeWithLLM = async () => {
+      providerCalls += 1;
+      return { text: makeConfirmedResponse(), inputTokens: 100, outputTokens: 50 };
+    };
+
+    const cache = new MemoryCacheStore();
+
+    const first = await analyzeFindings({
+      findings: [makeFinding()],
+      suspiciousNodes: [makeSuspiciousNode()],
+      llm: makeLLM(),
+      fix: false,
+    }, { providers: { claude: provider }, cache });
+
+    expect(first.llmCalls).toBe(1);
+    expect(first.cacheHits).toBe(0);
+    expect(providerCalls).toBe(1);
+
+    const second = await analyzeFindings({
+      findings: [makeFinding()],
+      suspiciousNodes: [makeSuspiciousNode()],
+      llm: makeLLM(),
+      fix: false,
+    }, { providers: { claude: provider }, cache });
+
+    expect(second.llmCalls).toBe(0);
+    expect(second.cacheHits).toBe(1);
+    expect(providerCalls).toBe(1);
+    expect(second.findings[0].llmAnalysis?.confirmed).toBe(true);
+    expect(second.findings[0].description).toContain('cached');
+  });
+
+  it('does not double-count tokens via cached entries against budget', async () => {
+    const cache = new MemoryCacheStore();
+    const provider: AnalyzeWithLLM = async () => ({
+      text: makeConfirmedResponse(),
+      inputTokens: 1_000_000,
+      outputTokens: 0,
+    });
+
+    await analyzeFindings({
+      findings: [makeFinding()],
+      suspiciousNodes: [makeSuspiciousNode()],
+      llm: makeLLM(),
+      fix: false,
+    }, { providers: { claude: provider }, cache });
+
+    const replay = await analyzeFindings({
+      findings: [makeFinding()],
+      suspiciousNodes: [makeSuspiciousNode()],
+      llm: makeLLM({ maxCostUSD: 1 }),
+      fix: false,
+    }, { providers: { claude: provider }, cache });
+
+    expect(replay.llmCalls).toBe(0);
+    expect(replay.cacheHits).toBe(1);
+    expect(replay.findings).toHaveLength(1);
+  });
+
+  it('treats fix=true and fix=false as independent cache entries', async () => {
+    const cache = new MemoryCacheStore();
+    let providerCalls = 0;
+    const provider: AnalyzeWithLLM = async () => {
+      providerCalls += 1;
+      return {
+        text: JSON.stringify({
+          confirmed: true,
+          confidence: 0.9,
+          reasoning: 'reason',
+          fixDescription: 'use parameterized',
+          fixCode: 'pool.query(?, [userInput])',
+        }),
+        inputTokens: 100,
+        outputTokens: 50,
+      };
+    };
+
+    await analyzeFindings({
+      findings: [makeFinding()],
+      suspiciousNodes: [makeSuspiciousNode()],
+      llm: makeLLM(),
+      fix: false,
+    }, { providers: { claude: provider }, cache });
+
+    await analyzeFindings({
+      findings: [makeFinding()],
+      suspiciousNodes: [makeSuspiciousNode()],
+      llm: makeLLM(),
+      fix: true,
+    }, { providers: { claude: provider }, cache });
+
+    expect(providerCalls).toBe(2);
   });
 });

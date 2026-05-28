@@ -1,6 +1,7 @@
 import type { Finding, FixSuggestion, LLMConfig, LLMProvider, SuspiciousNode } from '../types/index.js';
 import { analyzeWithClaude } from './providers/claude.js';
 import { analyzeWithOpenAI } from './providers/openai.js';
+import type { CacheStore, CachedAnalysis } from '../cache/index.js';
 
 export interface AnalyzeLLMRequest {
   model: string;
@@ -26,12 +27,14 @@ export interface AnalyzeFindingsOptions {
 
 export interface AnalyzeFindingsDependencies {
   providers?: Partial<Record<LLMProvider, AnalyzeWithLLM>>;
+  cache?: CacheStore;
 }
 
 export interface AnalyzeFindingsResult {
   findings: Finding[];
   llmCalls: number;
   estimatedCost: number;
+  cacheHits: number;
 }
 
 interface AnalysisPayload {
@@ -98,6 +101,7 @@ export async function analyzeFindings(
       findings: [],
       llmCalls: 0,
       estimatedCost: 0,
+      cacheHits: 0,
     };
   }
 
@@ -110,6 +114,7 @@ export async function analyzeFindings(
   }
 
   const provider = dependencies.providers?.[options.llm.provider] ?? DEFAULT_PROVIDERS[options.llm.provider];
+  const cache = dependencies.cache;
   const pricing = resolveModelPricing(options.llm.provider, options.llm.model);
 
   if (options.llm.maxCostUSD !== undefined && !pricing) {
@@ -126,6 +131,7 @@ export async function analyzeFindings(
 
   let nextIndex = 0;
   let llmCalls = 0;
+  let cacheHits = 0;
   let estimatedCost = 0;
   let budgetReached = false;
 
@@ -141,6 +147,25 @@ export async function analyzeFindings(
       if (budgetReached) {
         findingsByIndex[index] = candidate.finding;
         continue;
+      }
+
+      const cacheKey = cache ? buildCacheKey(candidate, options) : null;
+
+      if (cache && cacheKey) {
+        try {
+          const cached = await cache.get(cacheKey);
+          if (cached) {
+            cacheHits += 1;
+            estimatedCost += estimateUsageCost(pricing, cached.inputTokens, cached.outputTokens);
+            estimatedCost = roundCost(estimatedCost);
+            findingsByIndex[index] = cached.confirmed
+              ? applyCachedAnalysis(candidate.finding, cached)
+              : null;
+            continue;
+          }
+        } catch {
+          // cache read failure should never fail the scan
+        }
       }
 
       try {
@@ -168,6 +193,24 @@ export async function analyzeFindings(
         }
 
         const analysis = parseAnalysisPayload(response.text, options.fix);
+
+        if (cache && cacheKey) {
+          const record: CachedAnalysis = {
+            confirmed: analysis.confirmed,
+            llmAnalysis: {
+              confirmed: analysis.confirmed,
+              confidence: analysis.confidence,
+              reasoning: analysis.reasoning,
+            },
+            fix: analysis.fix,
+            inputTokens: response.inputTokens,
+            outputTokens: response.outputTokens,
+            cachedAt: Date.now(),
+            schemaVersion: 1,
+          };
+          await cache.set(cacheKey, record).catch(() => undefined);
+        }
+
         findingsByIndex[index] = analysis.confirmed
           ? applyAnalysis(candidate.finding, analysis)
           : null;
@@ -184,6 +227,27 @@ export async function analyzeFindings(
     findings: findingsByIndex.filter((finding): finding is Finding => finding !== null),
     llmCalls,
     estimatedCost,
+    cacheHits,
+  };
+}
+
+function buildCacheKey(candidate: AnalyzerCandidate, options: AnalyzeFindingsOptions) {
+  return {
+    ruleId: candidate.finding.ruleId,
+    model: options.llm.model,
+    provider: options.llm.provider,
+    snippet: candidate.suspiciousNode.snippet,
+    context: candidate.suspiciousNode.context,
+    includeFix: options.fix,
+  };
+}
+
+function applyCachedAnalysis(finding: Finding, cached: CachedAnalysis): Finding {
+  return {
+    ...finding,
+    description: `${finding.description} Confirmed by Stage 2 analysis (cached).`,
+    llmAnalysis: cached.llmAnalysis,
+    fix: cached.fix,
   };
 }
 

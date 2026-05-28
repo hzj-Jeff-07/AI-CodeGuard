@@ -15,7 +15,7 @@ describe('ConfigSchema', () => {
     expect(config.llm.model).toBe('claude-sonnet-4-6');
     expect(config.llm.maxConcurrency).toBe(5);
     expect(config.output.format).toBe('text');
-    expect(config.cache.enabled).toBe(true);
+    expect(config.cache.enabled).toBe(false);
     expect(config.cache.directory).toBe('.codeguard-cache');
     expect(config.cache.ttl).toBe(86400);
   });
