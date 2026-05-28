@@ -1,0 +1,57 @@
+name: security-scan
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  ai-codeguard:
+    name: AI-CodeGuard SARIF
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build CLI
+        run: npm run build
+
+      - name: Prepare artifact directory
+        run: mkdir -p artifacts
+
+      - name: Run Stage 1 scan (SARIF)
+        run: |
+          node dist/index.js scan ./src \
+            --dry-run \
+            --output sarif \
+            --output-file artifacts/ai-codeguard.sarif
+        continue-on-error: true
+
+      - name: Upload SARIF as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-codeguard-sarif
+          path: artifacts/ai-codeguard.sarif
+          if-no-files-found: warn
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always() && hashFiles('artifacts/ai-codeguard.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: artifacts/ai-codeguard.sarif
+          category: ai-codeguard

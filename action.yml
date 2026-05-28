@@ -1,0 +1,121 @@
+name: 'AI-CodeGuard Security Scan'
+description: 'AI-powered code security scanner combining Tree-sitter static analysis with optional LLM confirmation. Outputs SARIF for GitHub Code Scanning.'
+author: 'hzj-Jeff-07'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  paths:
+    description: 'Files or directories to scan (space-separated)'
+    required: false
+    default: '.'
+  config:
+    description: 'Path to .codeguard.yml config file'
+    required: false
+  output-file:
+    description: 'Path to write the SARIF report'
+    required: false
+    default: 'ai-codeguard.sarif'
+  dry-run:
+    description: 'Run Stage 1 only (no LLM calls). Set to "false" to enable Stage 2.'
+    required: false
+    default: 'true'
+  fix:
+    description: 'Generate fix suggestions during Stage 2 (requires Stage 2 enabled).'
+    required: false
+    default: 'false'
+  api-key:
+    description: 'CODEGUARD_API_KEY for Stage 2 (Anthropic / OpenAI). Required only when dry-run=false.'
+    required: false
+  severity:
+    description: 'Minimum severity to report: low, medium, high, critical'
+    required: false
+  fail-on-findings:
+    description: 'Exit with non-zero code if findings exist'
+    required: false
+    default: 'true'
+  node-version:
+    description: 'Node.js version to use'
+    required: false
+    default: '20'
+
+outputs:
+  sarif-file:
+    description: 'Path to the generated SARIF report'
+    value: ${{ steps.scan.outputs.sarif-file }}
+  findings-count:
+    description: 'Number of findings reported'
+    value: ${{ steps.scan.outputs.findings-count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Resolve action workspace
+      id: workspace
+      shell: bash
+      run: |
+        echo "action-path=${{ github.action_path }}" >> "$GITHUB_OUTPUT"
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ steps.workspace.outputs.action-path }}
+      run: npm ci
+
+    - name: Build CLI
+      shell: bash
+      working-directory: ${{ steps.workspace.outputs.action-path }}
+      run: npm run build
+
+    - name: Run AI-CodeGuard scan
+      id: scan
+      shell: bash
+      env:
+        CODEGUARD_API_KEY: ${{ inputs.api-key }}
+      run: |
+        set -euo pipefail
+
+        OUTPUT_FILE="${{ inputs.output-file }}"
+        OUTPUT_DIR="$(dirname "$OUTPUT_FILE")"
+        if [ "$OUTPUT_DIR" != "." ] && [ "$OUTPUT_DIR" != "" ]; then
+          mkdir -p "$OUTPUT_DIR"
+        fi
+
+        ARGS=(${{ inputs.paths }} --output sarif --output-file "$OUTPUT_FILE")
+
+        if [ "${{ inputs.dry-run }}" = "true" ]; then
+          ARGS+=(--dry-run)
+        fi
+
+        if [ "${{ inputs.fix }}" = "true" ]; then
+          ARGS+=(--fix)
+        fi
+
+        if [ -n "${{ inputs.config }}" ]; then
+          ARGS+=(--config "${{ inputs.config }}")
+        fi
+
+        if [ -n "${{ inputs.severity }}" ]; then
+          ARGS+=(--severity "${{ inputs.severity }}")
+        fi
+
+        node "${{ steps.workspace.outputs.action-path }}/dist/index.js" scan "${ARGS[@]}" || SCAN_EXIT=$?
+        SCAN_EXIT="${SCAN_EXIT:-0}"
+
+        echo "sarif-file=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+
+        if [ -f "$OUTPUT_FILE" ]; then
+          FINDINGS=$(node -e "const r=require('./'+process.argv[1]);console.log((r.runs?.[0]?.results||[]).length)" "$OUTPUT_FILE" 2>/dev/null || echo "0")
+        else
+          FINDINGS=0
+        fi
+        echo "findings-count=$FINDINGS" >> "$GITHUB_OUTPUT"
+
+        if [ "${{ inputs.fail-on-findings }}" = "true" ] && [ "$SCAN_EXIT" != "0" ]; then
+          exit "$SCAN_EXIT"
+        fi
