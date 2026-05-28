@@ -48,27 +48,42 @@
 
 **验收**：同一个仓库扫两次，第二次 `llmCalls = 0`，`estimatedCost = 0`，但 findings 完全一致。
 
-### 第 3 周（06-11 → 06-17）：M6 Go 语言支持
+### 第 3 周（06-11 → 06-17）：M6 Go 语言支持(MVP)
 
-| 日期 | 交付物 |
-|---|---|
-| 周四 06-11 | `npm install tree-sitter-go` + 加载器接入 `tree-sitter/runtime.ts` |
-| 周五 06-12 | `src/parser/languages/go.ts` 适配器（call_expression / interpreted_string_literal / binary_expression） |
-| 周六 06-13 | 5 条 Go 内置规则：SQL 注入（`fmt.Sprintf` + db.Query）、命令注入（`exec.Command` 拼接）、路径穿越、硬编码密钥、SSRF |
-| 周日 06-14 | 测试 fixture：`tests/fixtures/vulnerable/*.go` |
-| 周一 06-15 | 单元测试 ≥ 10 个 |
-| 周二 06-16 | 文档更新：README 语言表 + RULES.md |
-| 周三 06-17 | 博客第三篇大纲："给 SAST 扩语言：Tree-sitter 通用骨架" |
+**范围锁定(杠铃 90% 端)**:Go only,先 2 条规则跑通端到端,不铺规则面。
+**为什么收窄**:反向思维 — 5 规则 × 1 语言 = 5 个未知数并发,易陷死;2 条规则跑通"端到端通路"才是真验收。剩余 3 条规则顺延 W4 余量。
+**工时预算**:5-7h(Hofstadter ×1.5 缓冲后)。
 
-**验收**：扫 Gin/Echo demo 项目能命中真实漏洞模式。
+| 日期 | 交付物 | 预算 |
+|---|---|---:|
+| 周四 06-11 | `npm install tree-sitter-go` + 加载器接入 `tree-sitter/runtime.ts` + 跑通最小例子(parse 一个 hello.go 不报错) | 1h |
+| 周五 06-12 | `src/parser/languages/go.ts` 适配器(call_expression / interpreted_string_literal / binary_expression) | 1.5h |
+| 周六 06-13 | **2 条** Go 内置规则:SQL 注入(`fmt.Sprintf` + `db.Query`)、命令注入(`exec.Command` 字符串拼接) | 2h |
+| 周日 06-14 | 测试 fixture:`tests/fixtures/vulnerable/*.go` + `tests/fixtures/safe/*.go` 各 3-5 段 | 1h |
+| 周一 06-15 | 单元 + 集成测试 ≥ 6 个,本地全绿 | 1.5h |
+| 周二 06-16 | 文档更新:README 语言表 + RULES.md 标 Go 支持范围 | 0.5h |
+| 周三 06-17 | 缓冲日 / 博客第三篇大纲"给 SAST 扩语言:Tree-sitter 通用骨架" | — |
 
-### 第 4 周（06-18 → 06-24）：扫尾 + Java 启动
+**验收**(最小可放行):
+1. `codeguard scan ./go-demo` 能跑完不崩
+2. 一个 vulnerable Go 文件(SQL 注入)被命中,一个 safe 版本不误报
+3. 6 个测试全绿 + CI 绿
 
-| 日期 | 交付物 |
-|---|---|
-| 周四-周六 | Java 接入（同 Go 流程，但 Java AST 更复杂，留缓冲） |
-| 周日-周一 | 综合测试 + 发布 v0.2.0 |
-| 周二-周三 | Q2 复盘 + 写 Q3 执行表 |
+**Stretch(W3 提前完工才做)**:路径穿越 / 硬编码密钥 / SSRF — 不强制,挪到 W4。
+
+### 第 4 周（06-18 → 06-24）：扫尾 + Java 启动(MVP)
+
+**范围锁定**:Java 同样 **2 条规则 MVP**(SQL 注入 + 命令注入);Go 补做 W3 剩余 3 条 stretch 规则。
+**为什么**:Java AST 节点更复杂(JDK + Spring 注解多形态),不要在第一周就铺面。
+
+| 日期 | 交付物 | 预算 |
+|---|---|---:|
+| 周四 06-18 | Go stretch 规则:路径穿越 / 硬编码密钥 / SSRF(W3 没做完则在此补) | 2h |
+| 周五-周六 | Java 接入 grammar + adapter + 2 条规则,同 Go 流程 | 4-6h |
+| 周日-周一 | 综合测试 + 发布 v0.2.0(npm publish + GitHub Release) | 1.5h |
+| 周二-周三 | Q2 复盘 + 写 Q3 执行表 | — |
+
+**验收**:`v0.2.0` tag 已打、CI 三个 workflow 全绿、README 语言表显示 TS/JS/Py/Go/Java。
 
 ---
 
@@ -102,7 +117,8 @@
 代码侧:
   □ M5 完成,GitHub Code Scanning 真的能看到 ai-codeguard 标签
   □ Cache 命中率 ≥ 80% 在重复扫描场景
-  □ Go 语言支持 ≥ 5 条规则可用
+  □ Go 语言支持 ≥ 2 条规则可用(MVP)/ stretch ≥ 5 条
+  □ Java 语言支持 ≥ 2 条规则可用(MVP)
   □ 全测试通过(预期 ≥ 200 个测试)
   □ npm publish 成功
 
