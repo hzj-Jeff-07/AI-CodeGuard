@@ -12,7 +12,7 @@ export const ssrf: BuiltInRule = {
   name: 'Server-Side Request Forgery (SSRF)',
   severity: 'high',
   category: 'ssrf',
-  languages: ['javascript', 'typescript', 'python'],
+  languages: ['javascript', 'typescript', 'python', 'go'],
   description: 'Detects HTTP requests where the URL is constructed from user input.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -29,7 +29,7 @@ export const ssrf: BuiltInRule = {
     // Check if URL argument contains dynamic content
     const hasDynamic = node.children.some(
       c => c.type === 'template_string' || c.type === 'string_concat'
-    );
+    ) || (ctx.language === 'go' && /\bfmt\.Sprintf\s*\(/.test(call.fullExpression));
 
     // Or if the URL references user input
     const text = call.fullExpression;

@@ -141,6 +141,104 @@ func f(dir string) {
   });
 });
 
+// ── Go stretch rules: CG-020 / CG-030 / CG-060 ──────────────────
+
+describe('CG-020: Hardcoded Credentials (Go)', () => {
+  it('detects short variable declaration with password literal', async () => {
+    const source = `package main
+func f() string {
+	password := "SuperSecret123!"
+	return password
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-020').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects const api key', async () => {
+    const source = `package main
+const apiKey = "sk-live-9f8e7d6c5b4a3210"`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-020').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores credentials read from the environment', async () => {
+    const source = `package main
+func f() string {
+	password := os.Getenv("DB_PASSWORD")
+	return password
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-020').length).toBe(0);
+  });
+});
+
+describe('CG-030: Path Traversal (Go)', () => {
+  it('detects os.ReadFile with concatenated path', async () => {
+    const source = `package main
+func f(name string) ([]byte, error) {
+	return os.ReadFile("/data/uploads/" + name)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-030').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects os.Open with Sprintf-built path', async () => {
+    const source = `package main
+func f(day string) (*os.File, error) {
+	return os.Open(fmt.Sprintf("/var/log/%s.log", day))
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-030').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores static paths', async () => {
+    const source = `package main
+func f() ([]byte, error) {
+	return os.ReadFile("/etc/app/config.yml")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-030').length).toBe(0);
+  });
+
+  it('ignores non-os objects with matching method names', async () => {
+    const source = `package main
+func f(bucket Bucket, name string) ([]byte, error) {
+	return bucket.ReadFile("prefix/" + name)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-030').length).toBe(0);
+  });
+});
+
+describe('CG-060: SSRF (Go)', () => {
+  it('detects http.Get with concatenated URL', async () => {
+    const source = `package main
+func f(host string) (*http.Response, error) {
+	return http.Get("http://" + host + "/avatar.png")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects http.Get with Sprintf-built URL', async () => {
+    const source = `package main
+func f(endpoint string) (*http.Response, error) {
+	return http.Get(fmt.Sprintf("http://internal/%s", endpoint))
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores static URLs', async () => {
+    const source = `package main
+func f() (*http.Response, error) {
+	return http.Get("https://status.example.com/health")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+});
+
 // ── CG-003: Code Injection ──────────────────────────────────────
 
 describe('CG-003: Code Injection', () => {

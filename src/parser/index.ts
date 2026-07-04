@@ -23,7 +23,8 @@ const EXTENSION_MAP: Record<string, Language> = {
   '.go': 'go',
 };
 
-const HARDCODED_CREDENTIAL_PATTERN = /\b(password|secret|api[_-]?key|token|credential)\b\s*=\s*['"`][^'"`]+['"`]/i;
+// `:?=` also matches Go's short variable declaration (password := "...")
+const HARDCODED_CREDENTIAL_PATTERN = /\b(password|secret|api[_-]?key|token|credential)\b\s*:?=\s*['"`][^'"`]+['"`]/i;
 
 export function detectLanguage(filePath: string): Language | null {
   const ext = filePath.slice(filePath.lastIndexOf('.'));
@@ -177,6 +178,14 @@ function isHardcodedCredentialNode(node: TreeSitterNode, language: Language): bo
 function isAssignmentLikeNode(node: TreeSitterNode, language: Language): boolean {
   if (language === 'python') {
     return node.type === 'assignment';
+  }
+
+  if (language === 'go') {
+    // spec nodes (not the wrapping declarations) so each binding matches once
+    return node.type === 'short_var_declaration'
+      || node.type === 'assignment_statement'
+      || node.type === 'var_spec'
+      || node.type === 'const_spec';
   }
 
   return node.type === 'variable_declarator' || node.type === 'assignment_expression';

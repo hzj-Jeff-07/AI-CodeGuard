@@ -18,10 +18,9 @@ What is implemented today:
 - Config loading via `.codeguard.yml` / environment variables
 - Disk cache for Stage 2 LLM results (`cache.enabled`), wired into the scan pipeline
 - GitHub composite Action (`action.yml`) plus CI / SARIF-upload workflows
-- Automated validation with **201 passing tests across 10 test files** (`npm run test:run` on 2026-07-04)
+- Automated validation with **211 passing tests across 10 test files** (`npm run test:run` on 2026-07-04)
 
 What is **not** complete yet:
-- Go coverage beyond the 2-rule MVP (path traversal / hardcoded secrets / SSRF planned)
 - Java language support (planned)
 - npm publish / versioned releases (no `v0.2.0` tag yet)
 
@@ -35,7 +34,7 @@ What is **not** complete yet:
 | M3 Tree-sitter parser | Done | main parser now uses Tree-sitter-backed normalized AST |
 | M4 Custom rules runtime | Done | `rules.custom` is wired into `scan()`, and `rules validate/create/test` are available |
 | M5 GitHub / CI integration | Done | composite `action.yml`, `ci.yml`, and `security-scan.yml` (SARIF upload to Code Scanning) exist and pass |
-| M6 More languages | Partial | Go MVP shipped (Tree-sitter parsing + SQL/command injection rules); Java not started |
+| M6 More languages | Partial | Go shipped with 5 rules (SQL/command injection, credentials, path traversal, SSRF); Java not started |
 
 ### Terminology
 
@@ -93,7 +92,7 @@ node dist/index.js rules test ./custom-rules ./src --output json
 | JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | all 13 built-in rules |
 | TypeScript | `.ts`, `.tsx` | all 13 built-in rules |
 | Python | `.py` | all 13 built-in rules |
-| Go | `.go` | MVP: `CG-001` SQL injection, `CG-002` command injection |
+| Go | `.go` | `CG-001` SQL injection, `CG-002` command injection, `CG-020` hardcoded credentials, `CG-030` path traversal, `CG-060` SSRF |
 
 ### Built-in Rule Set
 
@@ -101,11 +100,11 @@ node dist/index.js rules test ./custom-rules ./src --output json
 |----------|----------|-------|
 | Injection | `CG-001`, `CG-002`, `CG-003` | SQL injection, command injection, eval/code injection; `CG-001`/`CG-002` also cover Go |
 | XSS | `CG-010`, `CG-011` | Reflected/DOM-based XSS |
-| Auth / Crypto | `CG-020`, `CG-021` | Hardcoded credentials, weak cryptography |
-| Path | `CG-030`, `CG-031` | Path traversal, arbitrary file read/write |
+| Auth / Crypto | `CG-020`, `CG-021` | Hardcoded credentials (also Go), weak cryptography |
+| Path | `CG-030`, `CG-031` | Path traversal (also Go), arbitrary file read/write |
 | Data | `CG-040`, `CG-041` | Sensitive data exposure, insecure deserialization |
 | Config | `CG-050` | Security misconfiguration |
-| SSRF | `CG-060` | Server-side request forgery |
+| SSRF | `CG-060` | Server-side request forgery (also Go) |
 
 Total: **13 built-in rules**.
 
@@ -279,7 +278,7 @@ npm run test:run
 Result:
 - build passed
 - `10` test files passed
-- `201` tests passed
+- `211` tests passed
 
 ## Limitations
 
@@ -288,7 +287,7 @@ Current known limitations:
 - parser uses Tree-sitter with a compatibility-preserving normalized AST layer
 - model-cost enforcement depends on a built-in pricing table; if `llm.maxCostUSD` is set for an unknown model, the scan fails fast
 - `rules test` is intentionally Stage 1-only and does not exercise Stage 2
-- Go support is an MVP: only `CG-001` (SQL injection, incl. `fmt.Sprintf` assembly) and `CG-002` (`exec.Command` with concatenation/Sprintf) run on `.go` files; inline `db.Query(fmt.Sprintf(...))` may report both the query call and the inner Sprintf
+- Go support covers 5 rules (`CG-001`/`CG-002`/`CG-020`/`CG-030`/`CG-060`); the remaining 8 built-in rules do not run on `.go` files. Stage 1 has no dataflow analysis, so inline `db.Query(fmt.Sprintf(...))` may report both the query call and the inner Sprintf
 - `config.output.format` is defined, but the scan command’s CLI default still prefers text unless `--output` is explicitly provided
 - fix suggestions are advisory only; the CLI does not rewrite files automatically
 
