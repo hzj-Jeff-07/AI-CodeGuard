@@ -82,7 +82,7 @@ export function formatSARIF(result: ScanResult): string {
       tool: {
         driver: {
           name: 'AI-CodeGuard',
-          version: '0.1.0',
+          version: '0.2.0',
           informationUri: 'https://github.com/user/ai-codeguard',
           rules: Array.from(ruleMap.entries()).map(([id, f]) => ({
             id,

@@ -129,7 +129,7 @@ describe('Scanner orchestrator', () => {
       await scan(options);
       const content = await fs.readFile(outputFile, 'utf-8');
       const parsed = JSON.parse(content);
-      expect(parsed.version).toBe('0.1.0');
+      expect(parsed.version).toBe('0.2.0');
       expect(parsed.findings.length).toBeGreaterThan(0);
     } finally {
       await fs.unlink(outputFile).catch(() => {});

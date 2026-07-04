@@ -8,7 +8,7 @@ const program = new Command();
 program
   .name('ai-codeguard')
   .description('AI-powered code security scanner')
-  .version('0.1.0');
+  .version('0.2.0');
 
 program.addCommand(createScanCommand());
 program.addCommand(createInitCommand());
