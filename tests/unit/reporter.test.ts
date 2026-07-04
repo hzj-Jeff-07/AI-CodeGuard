@@ -47,7 +47,7 @@ describe('formatJSON', () => {
   it('includes version field', () => {
     const result = makeScanResult();
     const parsed = JSON.parse(formatJSON(result));
-    expect(parsed.version).toBe('0.1.0');
+    expect(parsed.version).toBe('0.2.0');
   });
 
   it('includes scan metadata', () => {
@@ -148,7 +148,7 @@ describe('formatSARIF', () => {
     const result = makeScanResult([makeFinding()]);
     const sarif = JSON.parse(formatSARIF(result));
     expect(sarif.runs[0].tool.driver.name).toBe('AI-CodeGuard');
-    expect(sarif.runs[0].tool.driver.version).toBe('0.1.0');
+    expect(sarif.runs[0].tool.driver.version).toBe('0.2.0');
   });
 
   it('maps severity to SARIF level correctly', () => {

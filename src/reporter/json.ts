@@ -2,7 +2,7 @@ import type { Finding, ScanResult } from '../types/index.js';
 
 export function formatJSON(result: ScanResult): string {
   const output = {
-    version: '0.1.0',
+    version: '0.2.0',
     scan: {
       files: result.files,
       suspicious: result.suspicious,

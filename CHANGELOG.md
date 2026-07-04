@@ -2,7 +2,7 @@
 
 All notable changes to AI-CodeGuard are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased] — targeting v0.2.0
+## [0.2.0] — 2026-07-04
 
 ### Added
 
@@ -27,6 +27,8 @@ All notable changes to AI-CodeGuard are documented here. The format follows [Kee
 - README "Use as GitHub Action" section with a copy-paste workflow
 
 ### Changed
+
+- Removed the unused `tree-sitter-cli` devDependency — its postinstall downloads a binary from GitHub releases, which broke `npm install` on networks where GitHub is unreachable; the project only needs the prebuilt wasm files shipped inside the grammar packages
 
 - Default LLM model updated to `claude-sonnet-5`
 - Default include patterns now match `.go` files
