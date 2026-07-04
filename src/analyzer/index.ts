@@ -155,9 +155,8 @@ export async function analyzeFindings(
         try {
           const cached = await cache.get(cacheKey);
           if (cached) {
+            // A cache hit costs nothing — only real LLM calls count toward estimatedCost
             cacheHits += 1;
-            estimatedCost += estimateUsageCost(pricing, cached.inputTokens, cached.outputTokens);
-            estimatedCost = roundCost(estimatedCost);
             findingsByIndex[index] = cached.confirmed
               ? applyCachedAnalysis(candidate.finding, cached)
               : null;

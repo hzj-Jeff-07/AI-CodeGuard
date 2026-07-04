@@ -85,6 +85,13 @@ describe('Scanner orchestrator', () => {
     expect(result.findings.length).toBe(0);
   });
 
+  it('rejects an invalid minSeverity instead of silently filtering everything', async () => {
+    const options = makeOptions([resolve(FIXTURES_DIR, 'vulnerable')], {
+      minSeverity: 'hgih' as never,
+    });
+    await expect(runMuted(() => scan(options))).rejects.toThrow(/Invalid severity/);
+  });
+
   it('generates findings with sequential IDs', async () => {
     const options = makeOptions([resolve(FIXTURES_DIR, 'vulnerable')]);
     const result = await runMuted(() => scan(options));

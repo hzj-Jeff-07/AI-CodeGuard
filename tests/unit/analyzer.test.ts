@@ -237,6 +237,7 @@ describe('analyzeFindings', () => {
 
     expect(replay.llmCalls).toBe(0);
     expect(replay.cacheHits).toBe(1);
+    expect(replay.estimatedCost).toBe(0);
     expect(replay.findings).toHaveLength(1);
   });
 

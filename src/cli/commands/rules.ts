@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { loadConfig } from '../../config/index.js';
 import { validateCustomRules } from '../../rules/custom.js';
 import { getAllRuleIds, getRules } from '../../rules/index.js';
@@ -76,7 +76,11 @@ export function createRulesCommand(): Command {
     .description('Run Stage 1 scan using only custom rules')
     .argument('<rulesPath>', 'Path to custom rule YAML file or directory')
     .argument('[paths...]', 'Files or directories to scan', ['.'])
-    .option('-o, --output <format>', 'Output format: text, json, sarif', 'text')
+    .addOption(
+      new Option('-o, --output <format>', 'Output format')
+        .choices(['text', 'json', 'sarif'])
+        .default('text'),
+    )
     .option('-f, --output-file <file>', 'Write report to file')
     .option('--config <path>', 'Path to config file')
     .option('-v, --verbose', 'Verbose output', false)

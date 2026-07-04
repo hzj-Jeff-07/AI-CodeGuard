@@ -32,6 +32,12 @@ export async function scan(
 ): Promise<ScanResult> {
   const startTime = Date.now();
 
+  if (options.minSeverity && !(options.minSeverity in SEVERITY_RANK)) {
+    throw new Error(
+      `Invalid severity "${options.minSeverity}". Expected one of: low, medium, high, critical.`,
+    );
+  }
+
   const files = await discoverFiles(options.paths, options.config);
 
   const rules = await loadRules({

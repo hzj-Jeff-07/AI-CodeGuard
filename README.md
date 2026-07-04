@@ -16,12 +16,13 @@ What is implemented today:
 - Stage 2 LLM analysis via **Claude** or **OpenAI** when `scan` runs without `--dry-run`
 - Optional fix suggestions through `--fix`
 - Config loading via `.codeguard.yml` / environment variables
-- Automated validation with **171 passing tests across 9 test files** (`npm run test:run` on 2026-04-12)
+- Disk cache for Stage 2 LLM results (`cache.enabled`), wired into the scan pipeline
+- GitHub composite Action (`action.yml`) plus CI / SARIF-upload workflows
+- Automated validation with **187 passing tests across 10 test files** (`npm run test:run` on 2026-07-04)
 
 What is **not** complete yet:
-- Cache integration in the scan pipeline
-- GitHub Action packaging / upload workflow
-- Expanded language support beyond JS / TS / Python
+- Expanded language support beyond JS / TS / Python (Go / Java planned)
+- npm publish / versioned releases (no `v0.2.0` tag yet)
 
 ### Completion Snapshot
 
@@ -32,7 +33,7 @@ What is **not** complete yet:
 | M2 `--fix` suggestions | Done | confirmed Stage 2 findings can include `fix` |
 | M3 Tree-sitter parser | Done | main parser now uses Tree-sitter-backed normalized AST |
 | M4 Custom rules runtime | Done | `rules.custom` is wired into `scan()`, and `rules validate/create/test` are available |
-| M5 GitHub / CI integration | Not done | SARIF exists, packaged Action/upload flow does not |
+| M5 GitHub / CI integration | Done | composite `action.yml`, `ci.yml`, and `security-scan.yml` (SARIF upload to Code Scanning) exist and pass |
 | M6 More languages | Not done | runtime still supports JS / TS / Python only |
 
 ### Terminology
@@ -144,6 +145,7 @@ Important runtime behavior:
 - confirmed Stage 2 findings get `llmAnalysis`, and `--fix` can add `fix`
 - unconfirmed Stage 2 findings are filtered out of the final report
 - when `llm.maxCostUSD` is reached, new LLM calls stop and remaining unanalyzed findings stay as Stage 1 findings
+- when `cache.enabled` is `true`, Stage 2 results are persisted to `cache.directory` (default `.codeguard-cache/`); repeat scans reuse them with `llmCalls = 0` and `estimatedCost = 0` for cached entries
 
 ## Configuration
 
@@ -196,6 +198,15 @@ Stage 2 currently consumes:
 - `llm.maxConcurrency`
 - `llm.maxCostUSD`
 
+Stage 2 disk caching is controlled by (disabled by default):
+
+```yaml
+cache:
+  enabled: true
+  directory: .codeguard-cache
+  ttl: 86400
+```
+
 Note: provider selection is configured in the config file, not through a dedicated environment variable.
 
 ## Output Formats
@@ -213,7 +224,7 @@ Structured machine-readable output containing:
 ### SARIF
 SARIF v2.1.0 output suitable for downstream tooling, including optional SARIF fixes and LLM markdown context.
 
-Note: SARIF generation is implemented locally, but this repository does **not** yet include a packaged GitHub Action or upload workflow.
+SARIF output integrates with GitHub Code Scanning: the repository ships a composite Action (`action.yml`) and a `security-scan.yml` workflow that runs a Stage 1 scan and uploads the SARIF report via `github/codeql-action/upload-sarif`.
 
 ## Repository Structure
 
@@ -256,7 +267,7 @@ ai-codeguard/
 
 ## Verification
 
-Verified on 2026-04-12:
+Verified on 2026-07-04:
 
 ```bash
 npm run build
@@ -265,8 +276,8 @@ npm run test:run
 
 Result:
 - build passed
-- `9` test files passed
-- `171` tests passed
+- `10` test files passed
+- `187` tests passed
 
 ## Limitations
 
