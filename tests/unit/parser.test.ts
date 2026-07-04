@@ -35,6 +35,14 @@ describe('detectLanguage', () => {
     expect(detectLanguage('main.py')).toBe('python');
   });
 
+  it('maps .go to go', () => {
+    expect(detectLanguage('main.go')).toBe('go');
+  });
+
+  it('maps .java to java', () => {
+    expect(detectLanguage('Main.java')).toBe('java');
+  });
+
   it('returns null for unsupported extensions', () => {
     expect(detectLanguage('style.css')).toBeNull();
     expect(detectLanguage('README.md')).toBeNull();
@@ -63,6 +71,12 @@ describe('getAdapter', () => {
     const adapter = getAdapter('python');
     expect(adapter.language).toBe('python');
   });
+
+  it('returns go adapter', () => {
+    const adapter = getAdapter('go');
+    expect(adapter.language).toBe('go');
+    expect(adapter.fileExtensions).toContain('.go');
+  });
 });
 
 // ── getSupportedExtensions ──────────────────────────────────────
@@ -75,6 +89,7 @@ describe('getSupportedExtensions', () => {
     expect(exts).toContain('.py');
     expect(exts).toContain('.tsx');
     expect(exts).toContain('.jsx');
+    expect(exts).toContain('.go');
   });
 });
 
@@ -106,6 +121,35 @@ describe('parse', () => {
     const calls = tree.root.children.filter(n => n.type === 'function_call');
     expect(calls.length).toBeGreaterThanOrEqual(1);
     expect(calls[0].text).toContain('console.log');
+  });
+
+  it('parses Go source and detects call expressions', async () => {
+    const source = 'package main\nfunc f() {\n\tfmt.Println("hello")\n}\n';
+    const tree = await parse(source, 'go');
+    expect(tree.language).toBe('go');
+    const calls = tree.root.children.filter(n => n.type === 'function_call');
+    expect(calls.length).toBeGreaterThanOrEqual(1);
+    expect(calls[0].text).toContain('fmt.Println');
+  });
+
+  it('parses Java and extracts the outer call of a chained invocation', async () => {
+    const source = 'class T { Process f(String d) throws Exception { return Runtime.getRuntime().exec("ls " + d); } }';
+    const tree = await parse(source, 'java');
+    const call = tree.root.children.find(n => n.type === 'function_call' && n.text.includes('.exec('));
+    expect(call).toBeDefined();
+    expect(call!.children.some(c => c.type === 'string_concat')).toBe(true);
+    const { getAdapter } = await import('../../src/parser/index.js');
+    const info = getAdapter('java').extractCallInfo(call!);
+    expect(info?.name).toBe('exec');
+    expect(info?.object).toBe('Runtime.getRuntime()');
+  });
+
+  it('marks Go string concatenation as dynamic call argument', async () => {
+    const source = 'package main\nfunc f(dir string) {\n\texec.Command("sh", "-c", "ls "+dir)\n}\n';
+    const tree = await parse(source, 'go');
+    const call = tree.root.children.find(n => n.type === 'function_call' && n.text.includes('exec.Command'));
+    expect(call).toBeDefined();
+    expect(call!.children.some(c => c.type === 'string_concat')).toBe(true);
   });
 
   it('detects template literals with expressions', async () => {

@@ -97,10 +97,15 @@ function formatSummary(result: ScanResult): string {
 
   const duration = (result.duration / 1000).toFixed(1);
 
+  const dismissedCount = result.dismissedFindings?.length ?? 0;
+
   return [
     `  ${chalk.bold('Summary:')} ${summaryStr}`,
     `  Files scanned: ${result.files}  |  Suspicious: ${result.suspicious}  |  Duration: ${duration}s`,
     result.llmCalls > 0 ? `  LLM calls: ${result.llmCalls}  |  Estimated cost: $${result.estimatedCost.toFixed(2)}` : '',
     result.cacheHits > 0 ? `  Cache hits: ${result.cacheHits}` : '',
+    dismissedCount > 0
+      ? chalk.dim(`  Dismissed by Stage 2: ${dismissedCount} (kept in JSON output under "dismissedFindings" — review if unexpected)`)
+      : '',
   ].filter(Boolean).join('\n');
 }

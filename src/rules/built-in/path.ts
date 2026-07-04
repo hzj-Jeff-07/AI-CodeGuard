@@ -6,13 +6,16 @@ const PATH_FUNCTIONS_JS = ['readFile', 'readFileSync', 'writeFile', 'writeFileSy
   'unlink', 'unlinkSync', 'readdir', 'readdirSync', 'stat', 'statSync'];
 const PATH_FUNCTIONS_PY = ['open', 'read', 'write', 'listdir', 'remove', 'unlink',
   'makedirs', 'rmdir'];
+const PATH_FUNCTIONS_GO = ['Open', 'OpenFile', 'Create', 'ReadFile', 'WriteFile',
+  'Remove', 'RemoveAll', 'ReadDir', 'Mkdir', 'MkdirAll'];
+const PATH_OBJECTS_GO = ['os', 'ioutil'];
 
 export const pathTraversal: BuiltInRule = {
   id: 'CG-030',
   name: 'Path Traversal',
   severity: 'high',
   category: 'path',
-  languages: ['javascript', 'typescript', 'python'],
+  languages: ['javascript', 'typescript', 'python', 'go'],
   description: 'Detects file operations with user-controlled paths that may allow directory traversal.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -21,17 +24,25 @@ export const pathTraversal: BuiltInRule = {
     const call = ctx.extractCallInfo(node);
     if (!call) return null;
 
-    const fns = ctx.language === 'python' ? PATH_FUNCTIONS_PY : PATH_FUNCTIONS_JS;
-    if (!fns.includes(call.name)) return null;
+    if (ctx.language === 'go') {
+      if (!PATH_FUNCTIONS_GO.includes(call.name)) return null;
+      if (!call.object || !PATH_OBJECTS_GO.includes(call.object)) return null;
+    } else {
+      const fns = ctx.language === 'python' ? PATH_FUNCTIONS_PY : PATH_FUNCTIONS_JS;
+      if (!fns.includes(call.name)) return null;
+    }
 
     const hasDynamic = node.children.some(
       c => c.type === 'template_string' || c.type === 'string_concat'
-    );
+    ) || (ctx.language === 'go' && /\bfmt\.Sprintf\s*\(/.test(call.fullExpression));
     if (!hasDynamic) return null;
 
-    // Check for path.join or sanitization in context
+    // Check for path sanitization in context
     const context = ctx.getContext(node, 3);
     if (context.includes('path.resolve') && context.includes('startsWith')) {
+      return null; // Likely sanitized
+    }
+    if (ctx.language === 'go' && context.includes('filepath.Clean') && context.includes('HasPrefix')) {
       return null; // Likely sanitized
     }
 

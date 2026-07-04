@@ -1,4 +1,4 @@
-export type Language = 'javascript' | 'typescript' | 'python';
+export type Language = 'javascript' | 'typescript' | 'python' | 'go' | 'java';
 
 export interface SourceLocation {
   start: { line: number; column: number };

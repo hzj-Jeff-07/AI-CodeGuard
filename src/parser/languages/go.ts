@@ -1,23 +1,25 @@
 import type { LanguageAdapter, StandardNodeType, ASTNode, CallInfo } from '../../types/index.js';
 
 const NODE_TYPE_MAP: Record<string, StandardNodeType> = {
-  'call': 'function_call',
-  'f_string': 'template_string',
-  'binary_operator': 'binary_op',
-  'assignment': 'assignment',
-  'import_statement': 'import',
-  'import_from_statement': 'import',
-  'function_definition': 'function_def',
-  'class_definition': 'class_def',
-  'attribute': 'member_access',
+  'call_expression': 'function_call',
+  'binary_expression': 'binary_op',
+  'assignment_statement': 'assignment',
+  'short_var_declaration': 'assignment',
+  'import_declaration': 'import',
+  'function_declaration': 'function_def',
+  'method_declaration': 'function_def',
+  'func_literal': 'function_def',
+  'selector_expression': 'member_access',
   'identifier': 'identifier',
-  'string': 'literal',
-  'integer': 'literal',
+  'interpreted_string_literal': 'literal',
+  'raw_string_literal': 'literal',
+  'int_literal': 'literal',
+  'float_literal': 'literal',
 };
 
-export const pythonAdapter: LanguageAdapter = {
-  language: 'python',
-  fileExtensions: ['.py'],
+export const goAdapter: LanguageAdapter = {
+  language: 'go',
+  fileExtensions: ['.go'],
 
   mapNodeType(rawType: string): StandardNodeType {
     return NODE_TYPE_MAP[rawType] ?? 'unknown';

@@ -3,10 +3,11 @@ import { parse } from '../../src/parser/index.js';
 import { runRules, getRules } from '../../src/rules/index.js';
 import type { SuspiciousNode } from '../../src/types/index.js';
 
-async function scanCode(source: string, lang: 'javascript' | 'typescript' | 'python' = 'typescript'): Promise<SuspiciousNode[]> {
+async function scanCode(source: string, lang: 'javascript' | 'typescript' | 'python' | 'go' | 'java' = 'typescript'): Promise<SuspiciousNode[]> {
   const tree = await parse(source, lang);
   const rules = getRules();
-  return runRules(tree, rules, `test.${lang === 'python' ? 'py' : lang === 'javascript' ? 'js' : 'ts'}`);
+  const extMap: Record<string, string> = { python: 'py', javascript: 'js', typescript: 'ts', go: 'go', java: 'java' };
+  return runRules(tree, rules, `test.${extMap[lang]}`);
 }
 
 function findByRule(results: SuspiciousNode[], ruleId: string): SuspiciousNode[] {
@@ -42,6 +43,87 @@ describe('CG-001: SQL Injection', () => {
   });
 });
 
+// ── CG-001: SQL Injection (Go) ──────────────────────────────────
+
+describe('CG-001: SQL Injection (Go)', () => {
+  it('detects db.Query with inline fmt.Sprintf', async () => {
+    const source = `package main
+func f() {
+	rows, _ := db.Query(fmt.Sprintf("SELECT * FROM users WHERE id = %s", id))
+	_ = rows
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects fmt.Sprintf assembling SQL into a variable', async () => {
+    const source = `package main
+func f(name string) {
+	query := fmt.Sprintf("SELECT * FROM users WHERE name = '%s'", name)
+	rows, _ := db.Query(query)
+	_ = rows
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects db.Exec with string concatenation', async () => {
+    const source = `package main
+func f(name string) {
+	db.Exec("DELETE FROM users WHERE name = '" + name + "'")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores placeholder-parameterized Go queries', async () => {
+    const source = `package main
+func f(name string) {
+	rows, _ := db.Query("SELECT * FROM users WHERE name = ?", name)
+	db.Exec("DELETE FROM users WHERE id = $1", id)
+	_ = rows
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+});
+
+// ── CG-001: SQL Injection (Java) ────────────────────────────────
+
+describe('CG-001: SQL Injection (Java)', () => {
+  it('detects executeQuery with string concatenation', async () => {
+    const source = `class T {
+  ResultSet f(Statement stmt, String name) {
+    return stmt.executeQuery("SELECT * FROM users WHERE name = '" + name + "'");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects String.format assembling SQL', async () => {
+    const source = `class T {
+  void f(Connection conn, String name) {
+    String query = String.format("DELETE FROM users WHERE name = '%s'", name);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores parameterized prepared statements', async () => {
+    const source = `class T {
+  ResultSet f(Connection conn, String name) {
+    PreparedStatement ps = conn.prepareStatement("SELECT * FROM users WHERE name = ?");
+    ps.setString(1, name);
+    return ps.executeQuery();
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+});
+
 // ── CG-002: Command Injection ───────────────────────────────────
 
 describe('CG-002: Command Injection', () => {
@@ -58,6 +140,172 @@ describe('CG-002: Command Injection', () => {
   it('ignores static commands', async () => {
     const results = await scanCode('child_process.exec("ls -la")');
     expect(findByRule(results, 'CG-002').length).toBe(0);
+  });
+});
+
+// ── CG-002: Command Injection (Go) ──────────────────────────────
+
+describe('CG-002: Command Injection (Go)', () => {
+  it('detects exec.Command with string concatenation', async () => {
+    const source = `package main
+func f(dir string) {
+	cmd := exec.Command("sh", "-c", "ls -la "+dir)
+	cmd.Output()
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects exec.Command with fmt.Sprintf', async () => {
+    const source = `package main
+func f(host string) {
+	cmd := exec.Command("sh", "-c", fmt.Sprintf("ping -c 1 %s", host))
+	cmd.Output()
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores exec.Command with argument vector', async () => {
+    const source = `package main
+func f(dir string) {
+	cmd := exec.Command("ls", "-la", dir)
+	cmd.Output()
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-002').length).toBe(0);
+  });
+});
+
+// ── CG-002: Command Injection (Java) ────────────────────────────
+
+describe('CG-002: Command Injection (Java)', () => {
+  it('detects Runtime.getRuntime().exec with concatenation', async () => {
+    const source = `class T {
+  Process f(String dir) throws Exception {
+    return Runtime.getRuntime().exec("ls -la " + dir);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects ProcessBuilder with concatenation', async () => {
+    const source = `class T {
+  ProcessBuilder f(String host) {
+    return new ProcessBuilder("sh", "-c", "ping -c 1 " + host);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores ProcessBuilder with argument vector', async () => {
+    const source = `class T {
+  ProcessBuilder f(String dir) {
+    return new ProcessBuilder("ls", "-la", dir);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-002').length).toBe(0);
+  });
+});
+
+// ── Go stretch rules: CG-020 / CG-030 / CG-060 ──────────────────
+
+describe('CG-020: Hardcoded Credentials (Go)', () => {
+  it('detects short variable declaration with password literal', async () => {
+    const source = `package main
+func f() string {
+	password := "SuperSecret123!"
+	return password
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-020').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects const api key', async () => {
+    const source = `package main
+const apiKey = "sk-live-9f8e7d6c5b4a3210"`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-020').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores credentials read from the environment', async () => {
+    const source = `package main
+func f() string {
+	password := os.Getenv("DB_PASSWORD")
+	return password
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-020').length).toBe(0);
+  });
+});
+
+describe('CG-030: Path Traversal (Go)', () => {
+  it('detects os.ReadFile with concatenated path', async () => {
+    const source = `package main
+func f(name string) ([]byte, error) {
+	return os.ReadFile("/data/uploads/" + name)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-030').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects os.Open with Sprintf-built path', async () => {
+    const source = `package main
+func f(day string) (*os.File, error) {
+	return os.Open(fmt.Sprintf("/var/log/%s.log", day))
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-030').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores static paths', async () => {
+    const source = `package main
+func f() ([]byte, error) {
+	return os.ReadFile("/etc/app/config.yml")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-030').length).toBe(0);
+  });
+
+  it('ignores non-os objects with matching method names', async () => {
+    const source = `package main
+func f(bucket Bucket, name string) ([]byte, error) {
+	return bucket.ReadFile("prefix/" + name)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-030').length).toBe(0);
+  });
+});
+
+describe('CG-060: SSRF (Go)', () => {
+  it('detects http.Get with concatenated URL', async () => {
+    const source = `package main
+func f(host string) (*http.Response, error) {
+	return http.Get("http://" + host + "/avatar.png")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects http.Get with Sprintf-built URL', async () => {
+    const source = `package main
+func f(endpoint string) (*http.Response, error) {
+	return http.Get(fmt.Sprintf("http://internal/%s", endpoint))
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores static URLs', async () => {
+    const source = `package main
+func f() (*http.Response, error) {
+	return http.Get("https://status.example.com/health")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-060').length).toBe(0);
   });
 });
 
@@ -277,6 +525,25 @@ describe('CG-060: SSRF', () => {
   it('ignores static URLs', async () => {
     const results = await scanCode('fetch("https://api.example.com/data")');
     expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+
+  it('does not flag Express route registration as SSRF', async () => {
+    const results = await scanCode(
+      "app.get('/view', (req, res) => { res.send(req.params.file); })",
+    );
+    expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+
+  it('does not flag router.post route registration as SSRF', async () => {
+    const results = await scanCode(
+      "router.post('/upload', (req, res) => { res.json(req.body); })",
+    );
+    expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+
+  it('still detects http module calls with user input', async () => {
+    const results = await scanCode('http.get(req.query.url)');
+    expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
   });
 });
 

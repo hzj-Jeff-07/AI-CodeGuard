@@ -8,7 +8,7 @@ AI-CodeGuard is currently in a **Phase 1** state, but the runtime pipeline is no
 
 What is implemented today:
 - CLI commands: `scan`, `init`, `rules` (`--list`, `validate`, `create`, `test`)
-- Local scanning for **JavaScript, TypeScript, Python**
+- Local scanning for **JavaScript, TypeScript, Python, Go, and Java (MVP)**
 - **13 built-in OWASP-oriented rules**
 - Optional YAML custom rule loading through `rules.custom`
 - Custom rule CLI workflow through **`rules validate/create/test`**
@@ -16,12 +16,13 @@ What is implemented today:
 - Stage 2 LLM analysis via **Claude** or **OpenAI** when `scan` runs without `--dry-run`
 - Optional fix suggestions through `--fix`
 - Config loading via `.codeguard.yml` / environment variables
-- Automated validation with **171 passing tests across 9 test files** (`npm run test:run` on 2026-04-12)
+- Disk cache for Stage 2 LLM results (`cache.enabled`), wired into the scan pipeline
+- GitHub composite Action (`action.yml`) plus CI / SARIF-upload workflows
+- Automated validation with **225 passing tests across 10 test files** (`npm run test:run` on 2026-07-04)
 
 What is **not** complete yet:
-- Cache integration in the scan pipeline
-- GitHub Action packaging / upload workflow
-- Expanded language support beyond JS / TS / Python
+- Java coverage beyond the 2-rule MVP (credentials / path traversal / SSRF planned)
+- npm publish / versioned releases (no `v0.2.0` tag yet)
 
 ### Completion Snapshot
 
@@ -32,8 +33,8 @@ What is **not** complete yet:
 | M2 `--fix` suggestions | Done | confirmed Stage 2 findings can include `fix` |
 | M3 Tree-sitter parser | Done | main parser now uses Tree-sitter-backed normalized AST |
 | M4 Custom rules runtime | Done | `rules.custom` is wired into `scan()`, and `rules validate/create/test` are available |
-| M5 GitHub / CI integration | Not done | SARIF exists, packaged Action/upload flow does not |
-| M6 More languages | Not done | runtime still supports JS / TS / Python only |
+| M5 GitHub / CI integration | Done | composite `action.yml`, `ci.yml`, and `security-scan.yml` (SARIF upload to Code Scanning) exist and pass |
+| M6 More languages | Done (MVP scope) | Go: 5 rules; Java: 2-rule MVP (SQL + command injection) |
 
 ### Terminology
 
@@ -84,25 +85,64 @@ node dist/index.js rules validate ./custom-rules
 node dist/index.js rules test ./custom-rules ./src --output json
 ```
 
+### Use as GitHub Action
+
+Add a workflow that scans every pull request and uploads results to GitHub Code Scanning (Security tab):
+
+```yaml
+name: security-scan
+on: [pull_request]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  codeguard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AI-CodeGuard scan
+        id: scan
+        uses: hzj-Jeff-07/AI-CodeGuard@main
+        with:
+          paths: ./src
+          output-file: ai-codeguard.sarif
+          # dry-run: 'false'            # enable Stage 2 LLM confirmation
+          # api-key: ${{ secrets.CODEGUARD_API_KEY }}
+
+      - name: Upload SARIF to Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ai-codeguard.sarif
+          category: ai-codeguard
+```
+
+Defaults: Stage 1 only (no API key needed), fails the job on critical/high findings. All inputs and more recipes: [docs/dev/GITHUB-ACTION.md](./docs/dev/GITHUB-ACTION.md).
+
 ### Supported Languages
 
-| Language | Extensions |
-|----------|------------|
-| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` |
-| TypeScript | `.ts`, `.tsx` |
-| Python | `.py` |
+| Language | Extensions | Rule coverage |
+|----------|------------|---------------|
+| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | all 13 built-in rules |
+| TypeScript | `.ts`, `.tsx` | all 13 built-in rules |
+| Python | `.py` | all 13 built-in rules |
+| Go | `.go` | `CG-001` SQL injection, `CG-002` command injection, `CG-020` hardcoded credentials, `CG-030` path traversal, `CG-060` SSRF |
+| Java | `.java` | MVP: `CG-001` SQL injection (incl. `String.format`), `CG-002` command injection (`Runtime.exec`, `ProcessBuilder`) |
 
 ### Built-in Rule Set
 
 | Category | Rule IDs | Notes |
 |----------|----------|-------|
-| Injection | `CG-001`, `CG-002`, `CG-003` | SQL injection, command injection, eval/code injection |
+| Injection | `CG-001`, `CG-002`, `CG-003` | SQL injection, command injection, eval/code injection; `CG-001`/`CG-002` also cover Go and Java |
 | XSS | `CG-010`, `CG-011` | Reflected/DOM-based XSS |
-| Auth / Crypto | `CG-020`, `CG-021` | Hardcoded credentials, weak cryptography |
-| Path | `CG-030`, `CG-031` | Path traversal, arbitrary file read/write |
+| Auth / Crypto | `CG-020`, `CG-021` | Hardcoded credentials (also Go), weak cryptography |
+| Path | `CG-030`, `CG-031` | Path traversal (also Go), arbitrary file read/write |
 | Data | `CG-040`, `CG-041` | Sensitive data exposure, insecure deserialization |
 | Config | `CG-050` | Security misconfiguration |
-| SSRF | `CG-060` | Server-side request forgery |
+| SSRF | `CG-060` | Server-side request forgery (also Go) |
 
 Total: **13 built-in rules**.
 
@@ -120,7 +160,7 @@ Current boundary:
 - `rules.custom` can point to a YAML file or directory
 - directories load `*.yml` / `*.yaml` recursively
 - `disable` applies to built-in and custom rules by rule ID
-- `rules --list` still shows only built-in rules
+- `rules --list` shows built-in rules plus custom rules from config (`--config` supported)
 - `rules create` writes a minimal YAML scaffold and supports `--force`
 - `rules validate` checks YAML parsing, schema validity, and duplicate rule IDs
 - `rules test` is a **Stage 1-only** custom-rule smoke path, so it does not require an API key
@@ -142,8 +182,10 @@ Important runtime behavior:
 - `--dry-run` means **Stage 1 only**, so `llmCalls = 0` and `estimatedCost = 0`
 - non-dry-run scans that reach Stage 2 require `llm.apiKey` or a supported env var
 - confirmed Stage 2 findings get `llmAnalysis`, and `--fix` can add `fix`
-- unconfirmed Stage 2 findings are filtered out of the final report
+- findings the LLM does not confirm are moved to `dismissedFindings` (JSON output) with the LLM's reasoning, and the text summary shows a dismissed count — Stage 2 suppressions stay auditable
+- the Stage 2 prompt treats scanned code as untrusted data, so comments in scanned code that try to talk the LLM into dismissing a finding are instructed against (prompt-injection hardening)
 - when `llm.maxCostUSD` is reached, new LLM calls stop and remaining unanalyzed findings stay as Stage 1 findings
+- when `cache.enabled` is `true`, Stage 2 results are persisted to `cache.directory` (default `.codeguard-cache/`); repeat scans reuse them with `llmCalls = 0` and `estimatedCost = 0` for cached entries
 
 ## Configuration
 
@@ -152,8 +194,8 @@ Run `init` to generate a starter config:
 ```yaml
 scan:
   include:
-    - "src/**/*.{ts,js,py}"
-    - "lib/**/*.{ts,js,py}"
+    - "src/**/*.{ts,js,py,go,java}"
+    - "lib/**/*.{ts,js,py,go,java}"
   exclude:
     - "node_modules"
     - "dist"
@@ -166,7 +208,7 @@ rules:
 
 llm:
   provider: claude
-  model: claude-sonnet-4-6
+  model: claude-sonnet-5
   maxConcurrency: 5
 
 output:
@@ -196,6 +238,15 @@ Stage 2 currently consumes:
 - `llm.maxConcurrency`
 - `llm.maxCostUSD`
 
+Stage 2 disk caching is controlled by (disabled by default):
+
+```yaml
+cache:
+  enabled: true
+  directory: .codeguard-cache
+  ttl: 86400
+```
+
 Note: provider selection is configured in the config file, not through a dedicated environment variable.
 
 ## Output Formats
@@ -213,7 +264,7 @@ Structured machine-readable output containing:
 ### SARIF
 SARIF v2.1.0 output suitable for downstream tooling, including optional SARIF fixes and LLM markdown context.
 
-Note: SARIF generation is implemented locally, but this repository does **not** yet include a packaged GitHub Action or upload workflow.
+SARIF output integrates with GitHub Code Scanning: the repository ships a composite Action (`action.yml`) and a `security-scan.yml` workflow that runs a Stage 1 scan and uploads the SARIF report via `github/codeql-action/upload-sarif`.
 
 ## Repository Structure
 
@@ -256,7 +307,7 @@ ai-codeguard/
 
 ## Verification
 
-Verified on 2026-04-12:
+Verified on 2026-07-04:
 
 ```bash
 npm run build
@@ -265,8 +316,8 @@ npm run test:run
 
 Result:
 - build passed
-- `9` test files passed
-- `171` tests passed
+- `10` test files passed
+- `225` tests passed
 
 ## Limitations
 
@@ -274,9 +325,8 @@ Current known limitations:
 - default non-dry-run scans need an API key if Stage 2 is reached
 - parser uses Tree-sitter with a compatibility-preserving normalized AST layer
 - model-cost enforcement depends on a built-in pricing table; if `llm.maxCostUSD` is set for an unknown model, the scan fails fast
-- `rules --list` only shows built-in rules, not the custom rules loaded from config
 - `rules test` is intentionally Stage 1-only and does not exercise Stage 2
-- only JavaScript / TypeScript / Python are supported in code
+- Go support covers 5 rules (`CG-001`/`CG-002`/`CG-020`/`CG-030`/`CG-060`); Java covers 2 (`CG-001`/`CG-002`). Stage 1 has no dataflow analysis, so inline `db.Query(fmt.Sprintf(...))` / `executeQuery(String.format(...))` may report both the outer call and the inner format call
 - `config.output.format` is defined, but the scan command’s CLI default still prefers text unless `--output` is explicitly provided
 - fix suggestions are advisory only; the CLI does not rewrite files automatically
 

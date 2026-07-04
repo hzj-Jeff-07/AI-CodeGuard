@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { loadConfig } from '../../config/index.js';
 import { validateCustomRules } from '../../rules/custom.js';
 import { getAllRuleIds, getRules } from '../../rules/index.js';
@@ -26,8 +26,10 @@ export function createRulesCommand(): Command {
   const command = new Command('rules')
     .description('List and manage detection rules')
     .option('--list', 'List all available rules', true)
-    .action(() => {
+    .option('--config <path>', 'Path to config file (used to locate custom rules)')
+    .action(async (opts: { config?: string }) => {
       printBuiltInRules();
+      await printCustomRules(opts.config);
     });
 
   command
@@ -76,7 +78,11 @@ export function createRulesCommand(): Command {
     .description('Run Stage 1 scan using only custom rules')
     .argument('<rulesPath>', 'Path to custom rule YAML file or directory')
     .argument('[paths...]', 'Files or directories to scan', ['.'])
-    .option('-o, --output <format>', 'Output format: text, json, sarif', 'text')
+    .addOption(
+      new Option('-o, --output <format>', 'Output format')
+        .choices(['text', 'json', 'sarif'])
+        .default('text'),
+    )
     .option('-f, --output-file <file>', 'Write report to file')
     .option('--config <path>', 'Path to config file')
     .option('-v, --verbose', 'Verbose output', false)
@@ -135,6 +141,38 @@ function printBuiltInRules(): void {
   console.log('');
   console.log(`  Total: ${rules.length} rules`);
   console.log('');
+}
+
+async function printCustomRules(configPath?: string): Promise<void> {
+  let customPath: string | undefined;
+  try {
+    const config = await loadConfig(configPath);
+    customPath = config.rules.custom;
+  } catch {
+    return; // no readable config — built-in listing already printed
+  }
+
+  if (!customPath) return;
+
+  try {
+    const validated = await validateCustomRules(customPath, getAllRuleIds());
+    if (validated.definitions.length === 0) return;
+
+    console.log(`  Custom Rules (${customPath})`);
+    console.log('  ' + '-'.repeat(60));
+    for (const rule of validated.definitions) {
+      console.log(
+        `  ${rule.id.padEnd(8)}  ${rule.name.padEnd(30)}  ${rule.severity.padEnd(8)}  ${rule.languages.join(', ')}`,
+      );
+    }
+    console.log('');
+    console.log(`  Total custom: ${validated.definitions.length} rules`);
+    console.log('');
+  } catch (error) {
+    console.log(`  Custom rules (${customPath}) could not be loaded:`);
+    console.log(`    ${error instanceof Error ? error.message : error}`);
+    console.log('');
+  }
 }
 
 function createRulesTestConfig(config: CodeGuardConfig, rulesPath: string): CodeGuardConfig {

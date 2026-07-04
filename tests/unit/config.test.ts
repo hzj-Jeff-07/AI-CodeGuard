@@ -7,12 +7,12 @@ import { DEFAULT_CONFIG } from '../../src/config/defaults.js';
 describe('ConfigSchema', () => {
   it('parses empty object with all defaults', () => {
     const config = ConfigSchema.parse({});
-    expect(config.scan.include).toEqual(['**/*.{ts,js,py}']);
+    expect(config.scan.include).toEqual(['**/*.{ts,js,py,go,java}']);
     expect(config.scan.exclude).toContain('node_modules');
     expect(config.rules.preset).toBe('owasp-top-10');
     expect(config.rules.disable).toEqual([]);
     expect(config.llm.provider).toBe('claude');
-    expect(config.llm.model).toBe('claude-sonnet-4-6');
+    expect(config.llm.model).toBe('claude-sonnet-5');
     expect(config.llm.maxConcurrency).toBe(5);
     expect(config.output.format).toBe('text');
     expect(config.cache.enabled).toBe(false);
@@ -27,7 +27,7 @@ describe('ConfigSchema', () => {
     expect(config.rules.preset).toBe('all');
     expect(config.rules.disable).toEqual(['CG-001']);
     // Defaults should still be applied to other sections
-    expect(config.scan.include).toEqual(['**/*.{ts,js,py}']);
+    expect(config.scan.include).toEqual(['**/*.{ts,js,py,go,java}']);
   });
 
   it('validates preset enum', () => {

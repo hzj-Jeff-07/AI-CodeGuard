@@ -2,12 +2,16 @@ import type { Node as TreeSitterNode } from 'web-tree-sitter';
 import type { Language, ASTNode, ASTree, LanguageAdapter, SourceLocation } from '../types/index.js';
 import { javascriptAdapter, typescriptAdapter } from './languages/javascript.js';
 import { pythonAdapter } from './languages/python.js';
+import { goAdapter } from './languages/go.js';
+import { javaAdapter } from './languages/java.js';
 import { getTreeSitterRuntime } from './tree-sitter/runtime.js';
 
 const ADAPTERS: Record<Language, LanguageAdapter> = {
   javascript: javascriptAdapter,
   typescript: typescriptAdapter,
   python: pythonAdapter,
+  go: goAdapter,
+  java: javaAdapter,
 };
 
 const EXTENSION_MAP: Record<string, Language> = {
@@ -18,9 +22,12 @@ const EXTENSION_MAP: Record<string, Language> = {
   '.ts': 'typescript',
   '.tsx': 'typescript',
   '.py': 'python',
+  '.go': 'go',
+  '.java': 'java',
 };
 
-const HARDCODED_CREDENTIAL_PATTERN = /\b(password|secret|api[_-]?key|token|credential)\b\s*=\s*['"`][^'"`]+['"`]/i;
+// `:?=` also matches Go's short variable declaration (password := "...")
+const HARDCODED_CREDENTIAL_PATTERN = /\b(password|secret|api[_-]?key|token|credential)\b\s*:?=\s*['"`][^'"`]+['"`]/i;
 
 export function detectLanguage(filePath: string): Language | null {
   const ext = filePath.slice(filePath.lastIndexOf('.'));
@@ -124,6 +131,10 @@ function isCallNode(node: TreeSitterNode, language: Language): boolean {
     return node.type === 'call';
   }
 
+  if (language === 'java') {
+    return node.type === 'method_invocation' || node.type === 'object_creation_expression';
+  }
+
   return node.type === 'call_expression' || node.type === 'new_expression';
 }
 
@@ -156,6 +167,14 @@ function isStringLiteralLikeNode(node: TreeSitterNode, language: Language): bool
     return node.type === 'string' || node.type === 'f_string';
   }
 
+  if (language === 'go') {
+    return node.type === 'interpreted_string_literal' || node.type === 'raw_string_literal';
+  }
+
+  if (language === 'java') {
+    return node.type === 'string_literal';
+  }
+
   return node.type === 'string' || node.type === 'template_string' || node.type === 'template_literal';
 }
 
@@ -170,6 +189,14 @@ function isHardcodedCredentialNode(node: TreeSitterNode, language: Language): bo
 function isAssignmentLikeNode(node: TreeSitterNode, language: Language): boolean {
   if (language === 'python') {
     return node.type === 'assignment';
+  }
+
+  if (language === 'go') {
+    // spec nodes (not the wrapping declarations) so each binding matches once
+    return node.type === 'short_var_declaration'
+      || node.type === 'assignment_statement'
+      || node.type === 'var_spec'
+      || node.type === 'const_spec';
   }
 
   return node.type === 'variable_declarator' || node.type === 'assignment_expression';

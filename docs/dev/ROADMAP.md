@@ -1,5 +1,7 @@
 # AI-CodeGuard 开发路线图
 
+> ⚠️ **状态更新（2026-07-04）**：本文正文写于 2026-04-12，其中关于 “cache 未接入 / GitHub Action 未完成 / 171 个测试 / 仅支持 JS-TS-Python” 的描述已过时。当前事实：Stage 2 磁盘缓存已接入 `scan()`、composite Action 与 CI / SARIF 上传 workflow 已交付且全绿、Go 已支持 5 条规则、默认模型为 `claude-sonnet-5`、测试为 217 个（10 个文件）。以 `README.md` 与 `CHANGELOG.md` 为准，本文正文保留作历史快照。
+
 > 本路线图以当前源码为基线，截至 **2026-04-12**。它用于说明“下一步做什么”，**不是**对已上线能力的宣称。
 
 ## 1. 当前基线（已交付）
@@ -40,8 +42,8 @@
 | M2 | `--fix` 修复建议 | 已完成 | `Finding.fix` 可在运行时生成并进入报告 |
 | M3 | 用 Tree-sitter 替换轻量 parser | 已完成 | 主流程 parser 已改为 Tree-sitter 兼容归一化实现 |
 | M4 | Custom rules runtime | 已完成 | `rules.custom` 可加载，且 `rules validate/create/test` 已提供工作流 |
-| M5 | GitHub / CI 产品化集成 | 未实现 | 提供可复用的 Action/CI 接入路径 |
-| M6 | 扩展语言支持 | 未实现 | 在 parser + rules + 测试三层补齐新语言 |
+| M5 | GitHub / CI 产品化集成 | 已完成（2026-05-28） | composite `action.yml` + `ci.yml` + `security-scan.yml`（SARIF 上传 Code Scanning） |
+| M6 | 扩展语言支持 | 部分完成（2026-07-04） | Go 已支持 5 条规则（CG-001/002/020/030/060）；Java 未开始 |
 
 ## 4. 推荐优先级
 

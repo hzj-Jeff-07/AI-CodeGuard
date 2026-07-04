@@ -12,7 +12,7 @@ export interface ValidatedCustomRules {
   sources: Record<string, string>;
 }
 
-const LANGUAGE_VALUES = ['javascript', 'typescript', 'python'] as const;
+const LANGUAGE_VALUES = ['javascript', 'typescript', 'python', 'go', 'java'] as const;
 const SEVERITY_VALUES = ['critical', 'high', 'medium', 'low'] as const;
 const CATEGORY_VALUES = ['injection', 'xss', 'auth', 'path', 'data', 'config', 'ssrf'] as const;
 const NODE_TYPE_VALUES = [

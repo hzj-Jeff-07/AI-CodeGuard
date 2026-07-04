@@ -2,7 +2,7 @@ import type { CodeGuardConfig } from '../types/index.js';
 
 export const DEFAULT_CONFIG: CodeGuardConfig = {
   scan: {
-    include: ['**/*.{ts,js,py}'],
+    include: ['**/*.{ts,js,py,go,java}'],
     exclude: ['node_modules', '**/*.test.*', '**/*.spec.*', 'dist', 'build'],
   },
   rules: {
@@ -11,7 +11,7 @@ export const DEFAULT_CONFIG: CodeGuardConfig = {
   },
   llm: {
     provider: 'claude',
-    model: 'claude-sonnet-4-6',
+    model: 'claude-sonnet-5',
     maxConcurrency: 5,
   },
   output: {

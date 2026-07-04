@@ -1,5 +1,7 @@
 # AI-CodeGuard 技术方案汇总
 
+> ⚠️ **状态更新（2026-07-04）**：本文正文写于 2026-04-12，其中关于 “cache 未接入 / GitHub Action 未完成 / 171 个测试 / 仅支持 JS-TS-Python” 的描述已过时。当前事实：Stage 2 磁盘缓存已接入 `scan()`、composite Action 与 CI / SARIF 上传 workflow 已交付且全绿、Go 已支持 5 条规则、默认模型为 `claude-sonnet-5`、测试为 217 个（10 个文件）。以 `README.md` 与 `CHANGELOG.md` 为准，本文正文保留作历史快照。
+
 > 本文档汇总 **当前已实现能力、验证状态、已修正文档偏差**，并明确区分“已交付”和“后续规划”。
 
 > 术语约定：**Phase 1** 指当前已交付的产品阶段；**Stage 1** 指当前运行时中的静态预过滤；**Stage 2** 指当前运行时中的 LLM 深度分析阶段。

@@ -93,19 +93,19 @@ custom rules 当前也共享这一能力边界，因此它们：
 
 | 规则 ID | 名称 | 严重级别 | 语言 | 当前核心检测信号 |
 |---------|------|----------|------|------------------|
-| `CG-001` | SQL Injection | critical | JS / TS / Python | `query` / `execute` / `raw` / `exec` / `prepare` 等数据库调用，且参数中存在模板字符串或字符串拼接 |
-| `CG-002` | Command Injection | critical | JS / TS / Python | `exec` / `spawn` / `system` / `subprocess` 等命令执行调用，且参数带动态拼接 |
+| `CG-001` | SQL Injection | critical | JS / TS / Python / Go / Java | `query` / `execute` / `raw` / `exec` / `prepare` 等数据库调用，且参数中存在模板字符串或字符串拼接；Go 侧匹配 `db.Query/Exec/Prepare*` 的拼接或 `fmt.Sprintf` 组装，以及组装 SQL 的 `fmt.Sprintf` 本身；Java 侧匹配 `executeQuery/executeUpdate/prepareStatement` 等的拼接或 `String.format`，以及组装 SQL 的 `String.format` 本身 |
+| `CG-002` | Command Injection | critical | JS / TS / Python / Go / Java | `exec` / `spawn` / `system` / `subprocess` 等命令执行调用，且参数带动态拼接；Go 侧匹配 `exec.Command(Context)` 的字符串拼接或 `fmt.Sprintf`；Java 侧匹配 `Runtime.getRuntime().exec` / `new ProcessBuilder` 的拼接或 `String.format` |
 | `CG-003` | Code Injection (eval) | critical | JS / TS / Python | `eval` / `Function` / `setTimeout` / `setInterval` 等危险调用 |
 | `CG-010` | Cross-Site Scripting (XSS) | high | JS / TS | `innerHTML` / `outerHTML` / `document.write` / `insertAdjacentHTML` |
 | `CG-011` | DOM-based XSS | high | JS / TS | 同一节点同时包含 DOM source 与 sink |
-| `CG-020` | Hardcoded Credentials | high | JS / TS / Python | `password` / `secret` / `token` / `api_key` 等敏感赋值模式 |
+| `CG-020` | Hardcoded Credentials | high | JS / TS / Python / Go | `password` / `secret` / `token` / `api_key` 等敏感赋值模式；Go 侧覆盖 `:=` / `var` / `const` 字面量赋值 |
 | `CG-021` | Weak Cryptography | medium | JS / TS / Python | `md5` / `sha1` / `des` / `rc4` / `md4` 等弱算法 |
-| `CG-030` | Path Traversal | high | JS / TS / Python | 文件路径操作 + 动态路径拼接 |
+| `CG-030` | Path Traversal | high | JS / TS / Python / Go | 文件路径操作 + 动态路径拼接；Go 侧匹配 `os` / `ioutil` 文件函数的拼接或 `fmt.Sprintf` 路径 |
 | `CG-031` | Arbitrary File Read/Write | high | JS / TS / Python | `readFile` / `writeFile` / `open` 等操作直接引用 `req` / `params` / `query` / `args` |
 | `CG-040` | Sensitive Data Exposure | medium | JS / TS / Python | 日志调用中出现 `password` / `token` / `secret` / PII 模式 |
 | `CG-041` | Insecure Deserialization | high | JS / TS / Python | `deserialize` / `unserialize` / `pickle.loads` / `yaml.load` |
 | `CG-050` | Security Misconfiguration | medium | JS / TS / Python | CORS `*`、`secure: false`、`httpOnly: false`、`verify=False` 等配置模式 |
-| `CG-060` | Server-Side Request Forgery (SSRF) | high | JS / TS / Python | HTTP 请求 URL 来自动态拼接或明显用户输入 |
+| `CG-060` | Server-Side Request Forgery (SSRF) | high | JS / TS / Python / Go | HTTP 请求 URL 来自动态拼接或明显用户输入；Go 侧匹配 `http.*` 调用的拼接或 `fmt.Sprintf` URL |
 
 ## 6. 当前 custom rules 运行时形态
 
@@ -263,8 +263,9 @@ rules:
 
 当前规则系统最重要的限制有：
 
-1. **`rules --list` 仍只列 built-in rules**
-   - 不会显示当前配置加载到的 custom rules。
+1. **Go / Java 支持是 MVP 范围**
+   - Go：`CG-001` / `CG-002` / `CG-020` / `CG-030` / `CG-060` 共 5 条；Java：`CG-001` / `CG-002` 共 2 条。其余规则不在对应语言文件上运行。
+   - Stage 1 无数据流分析：`query := fmt.Sprintf(...)` 两步写法靠 “Sprintf 组装 SQL” 启发式命中；内联 `db.Query(fmt.Sprintf(...))` 会同时报外层调用与内层 Sprintf 两条。
 2. **`rules test` 是 Stage 1-only smoke path**
    - 用于验证 custom rules 命中情况，不覆盖 Stage 2。
 3. **custom rules 仍受限于当前归一化 AST 能力**

@@ -12,12 +12,16 @@ const BUNDLED_GRAMMAR_WASM_PATHS: Record<Language, string> = {
   javascript: join(packageRoot, 'dist', 'tree-sitter', 'tree-sitter-javascript.wasm'),
   typescript: join(packageRoot, 'dist', 'tree-sitter', 'tree-sitter-tsx.wasm'),
   python: join(packageRoot, 'dist', 'tree-sitter', 'tree-sitter-python.wasm'),
+  go: join(packageRoot, 'dist', 'tree-sitter', 'tree-sitter-go.wasm'),
+  java: join(packageRoot, 'dist', 'tree-sitter', 'tree-sitter-java.wasm'),
 };
 
 const FALLBACK_GRAMMAR_WASM_PATHS: Record<Language, string> = {
   javascript: require.resolve('tree-sitter-javascript/tree-sitter-javascript.wasm'),
   typescript: require.resolve('tree-sitter-typescript/tree-sitter-tsx.wasm'),
   python: require.resolve('tree-sitter-python/tree-sitter-python.wasm'),
+  go: require.resolve('tree-sitter-go/tree-sitter-go.wasm'),
+  java: require.resolve('tree-sitter-java/tree-sitter-java.wasm'),
 };
 
 export function resolveCoreWasmPath(): string {

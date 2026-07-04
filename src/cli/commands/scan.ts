@@ -1,4 +1,4 @@
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { loadConfig } from '../../config/index.js';
 import { scan } from '../../scanner/index.js';
 import type { OutputFormat, Severity } from '../../types/index.js';
@@ -7,12 +7,19 @@ export function createScanCommand(): Command {
   return new Command('scan')
     .description('Scan source code for security vulnerabilities')
     .argument('[paths...]', 'Files or directories to scan', ['.'])
-    .option('-o, --output <format>', 'Output format: text, json, sarif', 'text')
+    .addOption(
+      new Option('-o, --output <format>', 'Output format')
+        .choices(['text', 'json', 'sarif'])
+        .default('text'),
+    )
     .option('-f, --output-file <file>', 'Write report to file')
     .option('--fix', 'Generate fix suggestions (requires LLM)', false)
     .option('--dry-run', 'Run AST pre-filter only, no LLM calls', false)
     .option('--config <path>', 'Path to config file')
-    .option('-s, --severity <level>', 'Minimum severity: low, medium, high, critical')
+    .addOption(
+      new Option('-s, --severity <level>', 'Minimum severity to report')
+        .choices(['low', 'medium', 'high', 'critical']),
+    )
     .option('-v, --verbose', 'Verbose output', false)
     .action(async (paths: string[], opts) => {
       try {

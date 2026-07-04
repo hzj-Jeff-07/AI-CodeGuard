@@ -1,7 +1,10 @@
 import type { ASTNode, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
 
-const HTTP_FUNCTIONS = ['fetch', 'get', 'post', 'put', 'delete', 'patch', 'request', 'axios', 'http'];
+// Functions that make HTTP requests when called without a receiver object.
+// Bare verbs like `get`/`post` are intentionally excluded: they match Express
+// route registrations (`app.get`, `router.post`) and produce false positives.
+const STANDALONE_HTTP_FUNCTIONS = ['fetch', 'axios', 'request', 'urlopen'];
 const HTTP_MODULES = ['axios', 'fetch', 'http', 'https', 'request', 'got', 'node-fetch', 'urllib', 'requests', 'httpx'];
 
 export const ssrf: BuiltInRule = {
@@ -9,7 +12,7 @@ export const ssrf: BuiltInRule = {
   name: 'Server-Side Request Forgery (SSRF)',
   severity: 'high',
   category: 'ssrf',
-  languages: ['javascript', 'typescript', 'python'],
+  languages: ['javascript', 'typescript', 'python', 'go'],
   description: 'Detects HTTP requests where the URL is constructed from user input.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -18,14 +21,15 @@ export const ssrf: BuiltInRule = {
     const call = ctx.extractCallInfo(node);
     if (!call) return null;
 
-    const isHttpCall = HTTP_FUNCTIONS.includes(call.name) ||
-      (call.object && HTTP_MODULES.some(m => call.object!.includes(m)));
+    const isHttpCall = call.object
+      ? HTTP_MODULES.some(m => call.object!.includes(m))
+      : STANDALONE_HTTP_FUNCTIONS.includes(call.name);
     if (!isHttpCall) return null;
 
     // Check if URL argument contains dynamic content
     const hasDynamic = node.children.some(
       c => c.type === 'template_string' || c.type === 'string_concat'
-    );
+    ) || (ctx.language === 'go' && /\bfmt\.Sprintf\s*\(/.test(call.fullExpression));
 
     // Or if the URL references user input
     const text = call.fullExpression;

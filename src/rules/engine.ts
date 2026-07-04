@@ -1,4 +1,4 @@
-import type { ASTNode, Language, CallInfo, SuspiciousNode, SourceLocation } from '../types/index.js';
+import type { ASTNode, Language, CallInfo, SuspiciousNode } from '../types/index.js';
 import { getAdapter } from '../parser/index.js';
 
 export interface BuiltInRule {

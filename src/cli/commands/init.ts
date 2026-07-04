@@ -7,8 +7,8 @@ const DEFAULT_CONFIG = `# AI-CodeGuard Configuration
 
 scan:
   include:
-    - "src/**/*.{ts,js,py}"
-    - "lib/**/*.{ts,js,py}"
+    - "src/**/*.{ts,js,py,go,java}"
+    - "lib/**/*.{ts,js,py,go,java}"
   exclude:
     - "node_modules"
     - "dist"
@@ -24,9 +24,14 @@ rules:
 
 llm:
   provider: claude
-  model: claude-sonnet-4-6
+  model: claude-sonnet-5
   maxConcurrency: 5
   # maxCostUSD: 1.00
+
+cache:
+  enabled: true
+  directory: .codeguard-cache
+  ttl: 86400
 
 output:
   format: text

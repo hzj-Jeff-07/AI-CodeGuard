@@ -1,4 +1,3 @@
-import type { Severity } from './rule.js';
 
 export type OutputFormat = 'sarif' | 'json' | 'text';
 export type LLMProvider = 'claude' | 'openai';
