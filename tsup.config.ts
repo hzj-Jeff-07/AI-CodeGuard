@@ -21,6 +21,10 @@ const WASM_ASSETS = [
     from: require.resolve('tree-sitter-python/tree-sitter-python.wasm'),
     to: 'tree-sitter-python.wasm',
   },
+  {
+    from: require.resolve('tree-sitter-go/tree-sitter-go.wasm'),
+    to: 'tree-sitter-go.wasm',
+  },
 ];
 
 export default defineConfig({

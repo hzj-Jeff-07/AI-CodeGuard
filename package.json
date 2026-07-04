@@ -42,6 +42,7 @@
     "cosmiconfig": "^9.0.0",
     "fast-glob": "^3.3.3",
     "openai": "^4.85.0",
+    "tree-sitter-go": "^0.25.0",
     "tree-sitter-javascript": "^0.25.0",
     "tree-sitter-python": "^0.25.0",
     "tree-sitter-typescript": "^0.23.2",

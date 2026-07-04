@@ -2,12 +2,14 @@ import type { Node as TreeSitterNode } from 'web-tree-sitter';
 import type { Language, ASTNode, ASTree, LanguageAdapter, SourceLocation } from '../types/index.js';
 import { javascriptAdapter, typescriptAdapter } from './languages/javascript.js';
 import { pythonAdapter } from './languages/python.js';
+import { goAdapter } from './languages/go.js';
 import { getTreeSitterRuntime } from './tree-sitter/runtime.js';
 
 const ADAPTERS: Record<Language, LanguageAdapter> = {
   javascript: javascriptAdapter,
   typescript: typescriptAdapter,
   python: pythonAdapter,
+  go: goAdapter,
 };
 
 const EXTENSION_MAP: Record<string, Language> = {
@@ -18,6 +20,7 @@ const EXTENSION_MAP: Record<string, Language> = {
   '.ts': 'typescript',
   '.tsx': 'typescript',
   '.py': 'python',
+  '.go': 'go',
 };
 
 const HARDCODED_CREDENTIAL_PATTERN = /\b(password|secret|api[_-]?key|token|credential)\b\s*=\s*['"`][^'"`]+['"`]/i;
@@ -154,6 +157,10 @@ function hasStringLikeDescendant(node: TreeSitterNode, language: Language): bool
 function isStringLiteralLikeNode(node: TreeSitterNode, language: Language): boolean {
   if (language === 'python') {
     return node.type === 'string' || node.type === 'f_string';
+  }
+
+  if (language === 'go') {
+    return node.type === 'interpreted_string_literal' || node.type === 'raw_string_literal';
   }
 
   return node.type === 'string' || node.type === 'template_string' || node.type === 'template_literal';

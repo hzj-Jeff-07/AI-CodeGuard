@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const ConfigSchema = z.object({
   scan: z.object({
-    include: z.array(z.string()).default(['**/*.{ts,js,py}']),
+    include: z.array(z.string()).default(['**/*.{ts,js,py,go}']),
     exclude: z.array(z.string()).default(['node_modules', '**/*.test.*', '**/*.spec.*', 'dist', 'build']),
   }).default({}),
 

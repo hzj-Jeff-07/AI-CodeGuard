@@ -93,8 +93,8 @@ custom rules 当前也共享这一能力边界，因此它们：
 
 | 规则 ID | 名称 | 严重级别 | 语言 | 当前核心检测信号 |
 |---------|------|----------|------|------------------|
-| `CG-001` | SQL Injection | critical | JS / TS / Python | `query` / `execute` / `raw` / `exec` / `prepare` 等数据库调用，且参数中存在模板字符串或字符串拼接 |
-| `CG-002` | Command Injection | critical | JS / TS / Python | `exec` / `spawn` / `system` / `subprocess` 等命令执行调用，且参数带动态拼接 |
+| `CG-001` | SQL Injection | critical | JS / TS / Python / Go | `query` / `execute` / `raw` / `exec` / `prepare` 等数据库调用，且参数中存在模板字符串或字符串拼接；Go 侧匹配 `db.Query/Exec/Prepare*` 的拼接或 `fmt.Sprintf` 组装，以及组装 SQL 的 `fmt.Sprintf` 本身 |
+| `CG-002` | Command Injection | critical | JS / TS / Python / Go | `exec` / `spawn` / `system` / `subprocess` 等命令执行调用，且参数带动态拼接；Go 侧匹配 `exec.Command(Context)` 的字符串拼接或 `fmt.Sprintf` |
 | `CG-003` | Code Injection (eval) | critical | JS / TS / Python | `eval` / `Function` / `setTimeout` / `setInterval` 等危险调用 |
 | `CG-010` | Cross-Site Scripting (XSS) | high | JS / TS | `innerHTML` / `outerHTML` / `document.write` / `insertAdjacentHTML` |
 | `CG-011` | DOM-based XSS | high | JS / TS | 同一节点同时包含 DOM source 与 sink |
@@ -263,8 +263,9 @@ rules:
 
 当前规则系统最重要的限制有：
 
-1. **`rules --list` 仍只列 built-in rules**
-   - 不会显示当前配置加载到的 custom rules。
+1. **Go 支持是 MVP 范围**
+   - 仅 `CG-001` / `CG-002` 覆盖 Go；其余 11 条规则不在 `.go` 文件上运行。
+   - Stage 1 无数据流分析：`query := fmt.Sprintf(...)` 两步写法靠 “Sprintf 组装 SQL” 启发式命中；内联 `db.Query(fmt.Sprintf(...))` 会同时报外层调用与内层 Sprintf 两条。
 2. **`rules test` 是 Stage 1-only smoke path**
    - 用于验证 custom rules 命中情况，不覆盖 Stage 2。
 3. **custom rules 仍受限于当前归一化 AST 能力**

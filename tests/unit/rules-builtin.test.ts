@@ -3,10 +3,11 @@ import { parse } from '../../src/parser/index.js';
 import { runRules, getRules } from '../../src/rules/index.js';
 import type { SuspiciousNode } from '../../src/types/index.js';
 
-async function scanCode(source: string, lang: 'javascript' | 'typescript' | 'python' = 'typescript'): Promise<SuspiciousNode[]> {
+async function scanCode(source: string, lang: 'javascript' | 'typescript' | 'python' | 'go' = 'typescript'): Promise<SuspiciousNode[]> {
   const tree = await parse(source, lang);
   const rules = getRules();
-  return runRules(tree, rules, `test.${lang === 'python' ? 'py' : lang === 'javascript' ? 'js' : 'ts'}`);
+  const ext = lang === 'python' ? 'py' : lang === 'javascript' ? 'js' : lang === 'go' ? 'go' : 'ts';
+  return runRules(tree, rules, `test.${ext}`);
 }
 
 function findByRule(results: SuspiciousNode[], ruleId: string): SuspiciousNode[] {
@@ -42,6 +43,51 @@ describe('CG-001: SQL Injection', () => {
   });
 });
 
+// ── CG-001: SQL Injection (Go) ──────────────────────────────────
+
+describe('CG-001: SQL Injection (Go)', () => {
+  it('detects db.Query with inline fmt.Sprintf', async () => {
+    const source = `package main
+func f() {
+	rows, _ := db.Query(fmt.Sprintf("SELECT * FROM users WHERE id = %s", id))
+	_ = rows
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects fmt.Sprintf assembling SQL into a variable', async () => {
+    const source = `package main
+func f(name string) {
+	query := fmt.Sprintf("SELECT * FROM users WHERE name = '%s'", name)
+	rows, _ := db.Query(query)
+	_ = rows
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects db.Exec with string concatenation', async () => {
+    const source = `package main
+func f(name string) {
+	db.Exec("DELETE FROM users WHERE name = '" + name + "'")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores placeholder-parameterized Go queries', async () => {
+    const source = `package main
+func f(name string) {
+	rows, _ := db.Query("SELECT * FROM users WHERE name = ?", name)
+	db.Exec("DELETE FROM users WHERE id = $1", id)
+	_ = rows
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+});
+
 // ── CG-002: Command Injection ───────────────────────────────────
 
 describe('CG-002: Command Injection', () => {
@@ -57,6 +103,40 @@ describe('CG-002: Command Injection', () => {
 
   it('ignores static commands', async () => {
     const results = await scanCode('child_process.exec("ls -la")');
+    expect(findByRule(results, 'CG-002').length).toBe(0);
+  });
+});
+
+// ── CG-002: Command Injection (Go) ──────────────────────────────
+
+describe('CG-002: Command Injection (Go)', () => {
+  it('detects exec.Command with string concatenation', async () => {
+    const source = `package main
+func f(dir string) {
+	cmd := exec.Command("sh", "-c", "ls -la "+dir)
+	cmd.Output()
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects exec.Command with fmt.Sprintf', async () => {
+    const source = `package main
+func f(host string) {
+	cmd := exec.Command("sh", "-c", fmt.Sprintf("ping -c 1 %s", host))
+	cmd.Output()
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores exec.Command with argument vector', async () => {
+    const source = `package main
+func f(dir string) {
+	cmd := exec.Command("ls", "-la", dir)
+	cmd.Output()
+}`;
+    const results = await scanCode(source, 'go');
     expect(findByRule(results, 'CG-002').length).toBe(0);
   });
 });

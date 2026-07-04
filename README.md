@@ -8,7 +8,7 @@ AI-CodeGuard is currently in a **Phase 1** state, but the runtime pipeline is no
 
 What is implemented today:
 - CLI commands: `scan`, `init`, `rules` (`--list`, `validate`, `create`, `test`)
-- Local scanning for **JavaScript, TypeScript, Python**
+- Local scanning for **JavaScript, TypeScript, Python, and Go (MVP)**
 - **13 built-in OWASP-oriented rules**
 - Optional YAML custom rule loading through `rules.custom`
 - Custom rule CLI workflow through **`rules validate/create/test`**
@@ -18,10 +18,11 @@ What is implemented today:
 - Config loading via `.codeguard.yml` / environment variables
 - Disk cache for Stage 2 LLM results (`cache.enabled`), wired into the scan pipeline
 - GitHub composite Action (`action.yml`) plus CI / SARIF-upload workflows
-- Automated validation with **190 passing tests across 10 test files** (`npm run test:run` on 2026-07-04)
+- Automated validation with **201 passing tests across 10 test files** (`npm run test:run` on 2026-07-04)
 
 What is **not** complete yet:
-- Expanded language support beyond JS / TS / Python (Go / Java planned)
+- Go coverage beyond the 2-rule MVP (path traversal / hardcoded secrets / SSRF planned)
+- Java language support (planned)
 - npm publish / versioned releases (no `v0.2.0` tag yet)
 
 ### Completion Snapshot
@@ -34,7 +35,7 @@ What is **not** complete yet:
 | M3 Tree-sitter parser | Done | main parser now uses Tree-sitter-backed normalized AST |
 | M4 Custom rules runtime | Done | `rules.custom` is wired into `scan()`, and `rules validate/create/test` are available |
 | M5 GitHub / CI integration | Done | composite `action.yml`, `ci.yml`, and `security-scan.yml` (SARIF upload to Code Scanning) exist and pass |
-| M6 More languages | Not done | runtime still supports JS / TS / Python only |
+| M6 More languages | Partial | Go MVP shipped (Tree-sitter parsing + SQL/command injection rules); Java not started |
 
 ### Terminology
 
@@ -87,17 +88,18 @@ node dist/index.js rules test ./custom-rules ./src --output json
 
 ### Supported Languages
 
-| Language | Extensions |
-|----------|------------|
-| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` |
-| TypeScript | `.ts`, `.tsx` |
-| Python | `.py` |
+| Language | Extensions | Rule coverage |
+|----------|------------|---------------|
+| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | all 13 built-in rules |
+| TypeScript | `.ts`, `.tsx` | all 13 built-in rules |
+| Python | `.py` | all 13 built-in rules |
+| Go | `.go` | MVP: `CG-001` SQL injection, `CG-002` command injection |
 
 ### Built-in Rule Set
 
 | Category | Rule IDs | Notes |
 |----------|----------|-------|
-| Injection | `CG-001`, `CG-002`, `CG-003` | SQL injection, command injection, eval/code injection |
+| Injection | `CG-001`, `CG-002`, `CG-003` | SQL injection, command injection, eval/code injection; `CG-001`/`CG-002` also cover Go |
 | XSS | `CG-010`, `CG-011` | Reflected/DOM-based XSS |
 | Auth / Crypto | `CG-020`, `CG-021` | Hardcoded credentials, weak cryptography |
 | Path | `CG-030`, `CG-031` | Path traversal, arbitrary file read/write |
@@ -154,8 +156,8 @@ Run `init` to generate a starter config:
 ```yaml
 scan:
   include:
-    - "src/**/*.{ts,js,py}"
-    - "lib/**/*.{ts,js,py}"
+    - "src/**/*.{ts,js,py,go}"
+    - "lib/**/*.{ts,js,py,go}"
   exclude:
     - "node_modules"
     - "dist"
@@ -277,7 +279,7 @@ npm run test:run
 Result:
 - build passed
 - `10` test files passed
-- `190` tests passed
+- `201` tests passed
 
 ## Limitations
 
@@ -286,7 +288,7 @@ Current known limitations:
 - parser uses Tree-sitter with a compatibility-preserving normalized AST layer
 - model-cost enforcement depends on a built-in pricing table; if `llm.maxCostUSD` is set for an unknown model, the scan fails fast
 - `rules test` is intentionally Stage 1-only and does not exercise Stage 2
-- only JavaScript / TypeScript / Python are supported in code
+- Go support is an MVP: only `CG-001` (SQL injection, incl. `fmt.Sprintf` assembly) and `CG-002` (`exec.Command` with concatenation/Sprintf) run on `.go` files; inline `db.Query(fmt.Sprintf(...))` may report both the query call and the inner Sprintf
 - `config.output.format` is defined, but the scan command’s CLI default still prefers text unless `--output` is explicitly provided
 - fix suggestions are advisory only; the CLI does not rewrite files automatically
 

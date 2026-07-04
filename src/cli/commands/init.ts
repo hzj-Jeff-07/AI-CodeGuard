@@ -7,8 +7,8 @@ const DEFAULT_CONFIG = `# AI-CodeGuard Configuration
 
 scan:
   include:
-    - "src/**/*.{ts,js,py}"
-    - "lib/**/*.{ts,js,py}"
+    - "src/**/*.{ts,js,py,go}"
+    - "lib/**/*.{ts,js,py,go}"
   exclude:
     - "node_modules"
     - "dist"
