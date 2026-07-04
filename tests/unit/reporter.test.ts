@@ -58,6 +58,19 @@ describe('formatJSON', () => {
     expect(parsed.scan.duration).toBe(1234);
   });
 
+  it('includes dismissed findings with their reasoning', () => {
+    const dismissed = makeFinding({
+      description: 'Potential SQL Injection detected. Dismissed by Stage 2 analysis.',
+      llmAnalysis: { confirmed: false, confidence: 0.2, reasoning: 'Parameterized query.' },
+    });
+    const result = makeScanResult([], { llmCalls: 1, dismissedFindings: [dismissed] });
+    const parsed = JSON.parse(formatJSON(result));
+    expect(parsed.findings).toHaveLength(0);
+    expect(parsed.dismissedFindings).toHaveLength(1);
+    expect(parsed.dismissedFindings[0].llmAnalysis.confirmed).toBe(false);
+    expect(parsed.dismissedFindings[0].llmAnalysis.reasoning).toBe('Parameterized query.');
+  });
+
   it('includes findings array', () => {
     const finding = makeFinding();
     const result = makeScanResult([finding]);
@@ -231,6 +244,19 @@ describe('formatText', () => {
   it('includes duration in summary', () => {
     const output = formatText(makeScanResult([], { duration: 2500 }));
     expect(output).toContain('2.5s');
+  });
+
+  it('shows dismissed count in summary when Stage 2 dismissed findings', () => {
+    const dismissed = makeFinding({
+      llmAnalysis: { confirmed: false, confidence: 0.2, reasoning: 'Not exploitable.' },
+    });
+    const output = formatText(makeScanResult([], { llmCalls: 1, dismissedFindings: [dismissed] }));
+    expect(output).toContain('Dismissed by Stage 2: 1');
+  });
+
+  it('omits dismissed line when nothing was dismissed', () => {
+    const output = formatText(makeScanResult([makeFinding()]));
+    expect(output).not.toContain('Dismissed by Stage 2');
   });
 
   it('includes file count in summary', () => {

@@ -1,6 +1,6 @@
 import type { ASTNode, ASTree, SuspiciousNode } from '../types/index.js';
 import { walkAST } from '../parser/ast-walker.js';
-import { createRuleContext, type BuiltInRule, type RuleCheckContext } from './engine.js';
+import { createRuleContext, type BuiltInRule } from './engine.js';
 import * as builtInRules from './built-in/index.js';
 import { loadCustomRules } from './custom.js';
 

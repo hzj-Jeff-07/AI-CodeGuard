@@ -1,6 +1,5 @@
 import { cosmiconfig } from 'cosmiconfig';
 import { ConfigSchema } from './schema.js';
-import { DEFAULT_CONFIG } from './defaults.js';
 import type { CodeGuardConfig } from '../types/index.js';
 
 const MODULE_NAME = 'codeguard';

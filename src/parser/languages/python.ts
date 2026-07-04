@@ -1,4 +1,4 @@
-import type { Language, LanguageAdapter, StandardNodeType, ASTNode, CallInfo } from '../../types/index.js';
+import type { LanguageAdapter, StandardNodeType, ASTNode, CallInfo } from '../../types/index.js';
 
 const NODE_TYPE_MAP: Record<string, StandardNodeType> = {
   'call': 'function_call',

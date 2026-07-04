@@ -72,6 +72,7 @@ export async function scan(
   const stage1Findings = createStage1Findings(allSuspicious, rules);
 
   let findings = stage1Findings;
+  let dismissedFindings: Finding[] = [];
   let llmCalls = 0;
   let estimatedCost = 0;
   let cacheHits = 0;
@@ -93,6 +94,7 @@ export async function scan(
     }, mergedDependencies);
 
     findings = analyzed.findings;
+    dismissedFindings = analyzed.dismissed;
     llmCalls = analyzed.llmCalls;
     estimatedCost = analyzed.estimatedCost;
     cacheHits = analyzed.cacheHits;
@@ -107,6 +109,7 @@ export async function scan(
     files: files.length,
     suspicious: allSuspicious.length,
     findings,
+    dismissedFindings,
     skipped,
     duration: Date.now() - startTime,
     llmCalls,

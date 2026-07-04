@@ -18,7 +18,7 @@ What is implemented today:
 - Config loading via `.codeguard.yml` / environment variables
 - Disk cache for Stage 2 LLM results (`cache.enabled`), wired into the scan pipeline
 - GitHub composite Action (`action.yml`) plus CI / SARIF-upload workflows
-- Automated validation with **211 passing tests across 10 test files** (`npm run test:run` on 2026-07-04)
+- Automated validation with **217 passing tests across 10 test files** (`npm run test:run` on 2026-07-04)
 
 What is **not** complete yet:
 - Java language support (planned)
@@ -85,6 +85,43 @@ node dist/index.js rules validate ./custom-rules
 node dist/index.js rules test ./custom-rules ./src --output json
 ```
 
+### Use as GitHub Action
+
+Add a workflow that scans every pull request and uploads results to GitHub Code Scanning (Security tab):
+
+```yaml
+name: security-scan
+on: [pull_request]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  codeguard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AI-CodeGuard scan
+        id: scan
+        uses: hzj-Jeff-07/AI-CodeGuard@main
+        with:
+          paths: ./src
+          output-file: ai-codeguard.sarif
+          # dry-run: 'false'            # enable Stage 2 LLM confirmation
+          # api-key: ${{ secrets.CODEGUARD_API_KEY }}
+
+      - name: Upload SARIF to Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ai-codeguard.sarif
+          category: ai-codeguard
+```
+
+Defaults: Stage 1 only (no API key needed), fails the job on critical/high findings. All inputs and more recipes: [docs/dev/GITHUB-ACTION.md](./docs/dev/GITHUB-ACTION.md).
+
 ### Supported Languages
 
 | Language | Extensions | Rule coverage |
@@ -144,7 +181,8 @@ Important runtime behavior:
 - `--dry-run` means **Stage 1 only**, so `llmCalls = 0` and `estimatedCost = 0`
 - non-dry-run scans that reach Stage 2 require `llm.apiKey` or a supported env var
 - confirmed Stage 2 findings get `llmAnalysis`, and `--fix` can add `fix`
-- unconfirmed Stage 2 findings are filtered out of the final report
+- findings the LLM does not confirm are moved to `dismissedFindings` (JSON output) with the LLM's reasoning, and the text summary shows a dismissed count — Stage 2 suppressions stay auditable
+- the Stage 2 prompt treats scanned code as untrusted data, so comments in scanned code that try to talk the LLM into dismissing a finding are instructed against (prompt-injection hardening)
 - when `llm.maxCostUSD` is reached, new LLM calls stop and remaining unanalyzed findings stay as Stage 1 findings
 - when `cache.enabled` is `true`, Stage 2 results are persisted to `cache.directory` (default `.codeguard-cache/`); repeat scans reuse them with `llmCalls = 0` and `estimatedCost = 0` for cached entries
 
@@ -278,7 +316,7 @@ npm run test:run
 Result:
 - build passed
 - `10` test files passed
-- `211` tests passed
+- `217` tests passed
 
 ## Limitations
 
