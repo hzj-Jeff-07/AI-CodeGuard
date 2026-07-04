@@ -6,6 +6,10 @@ All notable changes to AI-CodeGuard are documented here. The format follows [Kee
 
 ### Added
 
+- **Java language support (MVP)**: Tree-sitter Java grammar bundled, `.java` detection, Java adapter (chained-invocation-aware callee extraction for `Runtime.getRuntime().exec(...)`), and 2 rules:
+  - `CG-001` SQL Injection — `executeQuery/executeUpdate/prepareStatement/...` with concatenated or `String.format`-built queries, plus `String.format` calls assembling SQL; placeholder-parameterized `PreparedStatement` usage is not flagged
+  - `CG-002` Command Injection — `Runtime.getRuntime().exec` / `new ProcessBuilder` with concatenated or `String.format`-built arguments
+
 - **Go language support (M6)**: Tree-sitter Go grammar bundled into `dist/tree-sitter/`, `.go` extension detection, Go language adapter, and 5 rules covering Go:
   - `CG-001` SQL Injection — `db/tx/stmt` `Query/Exec/Prepare*` calls built via concatenation or `fmt.Sprintf`, plus `fmt.Sprintf` calls that assemble SQL strings (covers two-step `query := Sprintf(...)` patterns); placeholder-parameterized queries are not flagged
   - `CG-002` Command Injection — `exec.Command`/`CommandContext` with concatenated or Sprintf-built arguments

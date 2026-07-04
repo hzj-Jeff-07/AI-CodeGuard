@@ -3,8 +3,10 @@ import type { BuiltInRule, RuleCheckContext } from '../engine.js';
 
 const SQL_METHODS = ['query', 'execute', 'raw', 'exec', 'prepare'];
 const SQL_METHODS_GO = ['Query', 'QueryRow', 'QueryContext', 'QueryRowContext', 'Exec', 'ExecContext', 'Prepare', 'PrepareContext'];
+const SQL_METHODS_JAVA = ['executeQuery', 'executeUpdate', 'execute', 'prepareStatement', 'prepareCall', 'createQuery', 'createNativeQuery', 'queryForObject', 'queryForList', 'update'];
 const SQL_OBJECTS = ['db', 'database', 'connection', 'conn', 'pool', 'client', 'knex', 'sequelize', 'prisma'];
 const SQL_OBJECTS_GO = ['db', 'database', 'conn', 'pool', 'tx', 'stmt'];
+const SQL_OBJECTS_JAVA = ['stmt', 'statement', 'conn', 'connection', 'db', 'jdbc', 'em', 'entitymanager', 'session', 'template'];
 const SQL_KEYWORDS = /\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|UNION|WHERE|FROM|JOIN)\b/i;
 
 export const sqlInjection: BuiltInRule = {
@@ -12,8 +14,8 @@ export const sqlInjection: BuiltInRule = {
   name: 'SQL Injection',
   severity: 'critical',
   category: 'injection',
-  languages: ['javascript', 'typescript', 'python', 'go'],
-  description: 'Detects unparameterized SQL queries built with string concatenation, template literals, or fmt.Sprintf.',
+  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
+  description: 'Detects unparameterized SQL queries built with string concatenation, template literals, fmt.Sprintf, or String.format.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
     if (node.type !== 'function_call') return null;
@@ -21,9 +23,13 @@ export const sqlInjection: BuiltInRule = {
     const call = ctx.extractCallInfo(node);
     if (!call) return null;
 
-    // Go: fmt.Sprintf assembling a SQL string is suspicious on its own —
-    // Stage 1 has no dataflow, so the later db.Query(variable) is invisible.
-    if (ctx.language === 'go' && call.name === 'Sprintf' && call.object === 'fmt') {
+    // fmt.Sprintf / String.format assembling a SQL string is suspicious on
+    // its own — Stage 1 has no dataflow, so the later query(variable) call
+    // is invisible.
+    const isFormatBuilder =
+      (ctx.language === 'go' && call.name === 'Sprintf' && call.object === 'fmt') ||
+      (ctx.language === 'java' && call.name === 'format' && call.object === 'String');
+    if (isFormatBuilder) {
       if (!SQL_KEYWORDS.test(call.fullExpression)) return null;
       return {
         file: ctx.file,
@@ -39,11 +45,15 @@ export const sqlInjection: BuiltInRule = {
       };
     }
 
-    const methods = ctx.language === 'go' ? SQL_METHODS_GO : SQL_METHODS;
+    const methods = ctx.language === 'go' ? SQL_METHODS_GO
+      : ctx.language === 'java' ? SQL_METHODS_JAVA
+      : SQL_METHODS;
     if (!methods.includes(call.name)) return null;
 
     // Check if the call target looks like a DB object
-    const objects = ctx.language === 'go' ? SQL_OBJECTS_GO : SQL_OBJECTS;
+    const objects = ctx.language === 'go' ? SQL_OBJECTS_GO
+      : ctx.language === 'java' ? SQL_OBJECTS_JAVA
+      : SQL_OBJECTS;
     if (call.object && !objects.some(o => call.object!.toLowerCase().includes(o))) {
       return null;
     }
@@ -52,11 +62,14 @@ export const sqlInjection: BuiltInRule = {
       c => c.type === 'template_string' || c.type === 'string_concat'
     );
 
-    if (ctx.language === 'go') {
-      // Go: only flag queries assembled dynamically — via concatenation or
-      // fmt.Sprintf. Placeholder-based queries (`... WHERE id = ?`, $1) are safe.
-      const usesSprintf = /\bfmt\.Sprintf\s*\(/.test(call.fullExpression);
-      if (!hasConcatOrTemplate && !usesSprintf) return null;
+    if (ctx.language === 'go' || ctx.language === 'java') {
+      // Only flag queries assembled dynamically — via concatenation,
+      // fmt.Sprintf, or String.format. Placeholder-based queries
+      // (`... WHERE id = ?`, $1) are safe.
+      const usesFormatBuilder = ctx.language === 'go'
+        ? /\bfmt\.Sprintf\s*\(/.test(call.fullExpression)
+        : /\bString\.format\s*\(/.test(call.fullExpression);
+      if (!hasConcatOrTemplate && !usesFormatBuilder) return null;
       if (!SQL_KEYWORDS.test(call.fullExpression)) return null;
     } else {
       if (!hasConcatOrTemplate && !SQL_KEYWORDS.test(call.fullExpression)) return null;
@@ -91,7 +104,7 @@ export const commandInjection: BuiltInRule = {
   name: 'Command Injection',
   severity: 'critical',
   category: 'injection',
-  languages: ['javascript', 'typescript', 'python', 'go'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
   description: 'Detects shell command execution with user-controlled input.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -100,19 +113,25 @@ export const commandInjection: BuiltInRule = {
     const call = ctx.extractCallInfo(node);
     if (!call) return null;
 
-    const isJSCmd = CMD_FUNCTIONS.includes(call.name) &&
+    const isJSCmd = ctx.language !== 'java' &&
+      CMD_FUNCTIONS.includes(call.name) &&
       (!call.object || CMD_OBJECTS_JS.some(o => call.object!.includes(o)));
     const isPyCmd = CMD_FUNCTIONS_PY.includes(call.name) &&
       (!call.object || CMD_OBJECTS_PY.some(o => call.object!.includes(o)));
     const isGoCmd = ctx.language === 'go' &&
       CMD_FUNCTIONS_GO.includes(call.name) &&
       call.object !== null && call.object.includes('exec');
+    const isJavaCmd = ctx.language === 'java' && (
+      (call.name === 'exec' && call.object !== null && call.object.includes('Runtime')) ||
+      call.name === 'ProcessBuilder'
+    );
 
-    if (!isJSCmd && !isPyCmd && !isGoCmd) return null;
+    if (!isJSCmd && !isPyCmd && !isGoCmd && !isJavaCmd) return null;
 
     const hasDynamic = node.children.some(
       c => c.type === 'template_string' || c.type === 'string_concat'
-    ) || (ctx.language === 'go' && /\bfmt\.Sprintf\s*\(/.test(call.fullExpression));
+    ) || (ctx.language === 'go' && /\bfmt\.Sprintf\s*\(/.test(call.fullExpression))
+      || (ctx.language === 'java' && /\bString\.format\s*\(/.test(call.fullExpression));
     if (!hasDynamic) return null;
 
     return {

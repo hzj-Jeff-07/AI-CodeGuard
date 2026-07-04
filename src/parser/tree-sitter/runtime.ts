@@ -27,6 +27,7 @@ async function loadTreeSitterRuntime(): Promise<TreeSitterRuntime> {
     typescript: await TreeSitter.Language.load(resolveGrammarWasmPath('typescript')),
     python: await TreeSitter.Language.load(resolveGrammarWasmPath('python')),
     go: await TreeSitter.Language.load(resolveGrammarWasmPath('go')),
+    java: await TreeSitter.Language.load(resolveGrammarWasmPath('java')),
   };
 
   return {

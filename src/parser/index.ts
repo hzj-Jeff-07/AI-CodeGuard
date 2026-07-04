@@ -3,6 +3,7 @@ import type { Language, ASTNode, ASTree, LanguageAdapter, SourceLocation } from 
 import { javascriptAdapter, typescriptAdapter } from './languages/javascript.js';
 import { pythonAdapter } from './languages/python.js';
 import { goAdapter } from './languages/go.js';
+import { javaAdapter } from './languages/java.js';
 import { getTreeSitterRuntime } from './tree-sitter/runtime.js';
 
 const ADAPTERS: Record<Language, LanguageAdapter> = {
@@ -10,6 +11,7 @@ const ADAPTERS: Record<Language, LanguageAdapter> = {
   typescript: typescriptAdapter,
   python: pythonAdapter,
   go: goAdapter,
+  java: javaAdapter,
 };
 
 const EXTENSION_MAP: Record<string, Language> = {
@@ -21,6 +23,7 @@ const EXTENSION_MAP: Record<string, Language> = {
   '.tsx': 'typescript',
   '.py': 'python',
   '.go': 'go',
+  '.java': 'java',
 };
 
 // `:?=` also matches Go's short variable declaration (password := "...")
@@ -128,6 +131,10 @@ function isCallNode(node: TreeSitterNode, language: Language): boolean {
     return node.type === 'call';
   }
 
+  if (language === 'java') {
+    return node.type === 'method_invocation' || node.type === 'object_creation_expression';
+  }
+
   return node.type === 'call_expression' || node.type === 'new_expression';
 }
 
@@ -162,6 +169,10 @@ function isStringLiteralLikeNode(node: TreeSitterNode, language: Language): bool
 
   if (language === 'go') {
     return node.type === 'interpreted_string_literal' || node.type === 'raw_string_literal';
+  }
+
+  if (language === 'java') {
+    return node.type === 'string_literal';
   }
 
   return node.type === 'string' || node.type === 'template_string' || node.type === 'template_literal';

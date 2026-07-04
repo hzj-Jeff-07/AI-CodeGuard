@@ -39,6 +39,10 @@ describe('detectLanguage', () => {
     expect(detectLanguage('main.go')).toBe('go');
   });
 
+  it('maps .java to java', () => {
+    expect(detectLanguage('Main.java')).toBe('java');
+  });
+
   it('returns null for unsupported extensions', () => {
     expect(detectLanguage('style.css')).toBeNull();
     expect(detectLanguage('README.md')).toBeNull();
@@ -126,6 +130,18 @@ describe('parse', () => {
     const calls = tree.root.children.filter(n => n.type === 'function_call');
     expect(calls.length).toBeGreaterThanOrEqual(1);
     expect(calls[0].text).toContain('fmt.Println');
+  });
+
+  it('parses Java and extracts the outer call of a chained invocation', async () => {
+    const source = 'class T { Process f(String d) throws Exception { return Runtime.getRuntime().exec("ls " + d); } }';
+    const tree = await parse(source, 'java');
+    const call = tree.root.children.find(n => n.type === 'function_call' && n.text.includes('.exec('));
+    expect(call).toBeDefined();
+    expect(call!.children.some(c => c.type === 'string_concat')).toBe(true);
+    const { getAdapter } = await import('../../src/parser/index.js');
+    const info = getAdapter('java').extractCallInfo(call!);
+    expect(info?.name).toBe('exec');
+    expect(info?.object).toBe('Runtime.getRuntime()');
   });
 
   it('marks Go string concatenation as dynamic call argument', async () => {

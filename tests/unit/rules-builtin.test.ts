@@ -3,11 +3,11 @@ import { parse } from '../../src/parser/index.js';
 import { runRules, getRules } from '../../src/rules/index.js';
 import type { SuspiciousNode } from '../../src/types/index.js';
 
-async function scanCode(source: string, lang: 'javascript' | 'typescript' | 'python' | 'go' = 'typescript'): Promise<SuspiciousNode[]> {
+async function scanCode(source: string, lang: 'javascript' | 'typescript' | 'python' | 'go' | 'java' = 'typescript'): Promise<SuspiciousNode[]> {
   const tree = await parse(source, lang);
   const rules = getRules();
-  const ext = lang === 'python' ? 'py' : lang === 'javascript' ? 'js' : lang === 'go' ? 'go' : 'ts';
-  return runRules(tree, rules, `test.${ext}`);
+  const extMap: Record<string, string> = { python: 'py', javascript: 'js', typescript: 'ts', go: 'go', java: 'java' };
+  return runRules(tree, rules, `test.${extMap[lang]}`);
 }
 
 function findByRule(results: SuspiciousNode[], ruleId: string): SuspiciousNode[] {
@@ -88,6 +88,42 @@ func f(name string) {
   });
 });
 
+// ── CG-001: SQL Injection (Java) ────────────────────────────────
+
+describe('CG-001: SQL Injection (Java)', () => {
+  it('detects executeQuery with string concatenation', async () => {
+    const source = `class T {
+  ResultSet f(Statement stmt, String name) {
+    return stmt.executeQuery("SELECT * FROM users WHERE name = '" + name + "'");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects String.format assembling SQL', async () => {
+    const source = `class T {
+  void f(Connection conn, String name) {
+    String query = String.format("DELETE FROM users WHERE name = '%s'", name);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores parameterized prepared statements', async () => {
+    const source = `class T {
+  ResultSet f(Connection conn, String name) {
+    PreparedStatement ps = conn.prepareStatement("SELECT * FROM users WHERE name = ?");
+    ps.setString(1, name);
+    return ps.executeQuery();
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+});
+
 // ── CG-002: Command Injection ───────────────────────────────────
 
 describe('CG-002: Command Injection', () => {
@@ -137,6 +173,40 @@ func f(dir string) {
 	cmd.Output()
 }`;
     const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-002').length).toBe(0);
+  });
+});
+
+// ── CG-002: Command Injection (Java) ────────────────────────────
+
+describe('CG-002: Command Injection (Java)', () => {
+  it('detects Runtime.getRuntime().exec with concatenation', async () => {
+    const source = `class T {
+  Process f(String dir) throws Exception {
+    return Runtime.getRuntime().exec("ls -la " + dir);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects ProcessBuilder with concatenation', async () => {
+    const source = `class T {
+  ProcessBuilder f(String host) {
+    return new ProcessBuilder("sh", "-c", "ping -c 1 " + host);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores ProcessBuilder with argument vector', async () => {
+    const source = `class T {
+  ProcessBuilder f(String dir) {
+    return new ProcessBuilder("ls", "-la", dir);
+  }
+}`;
+    const results = await scanCode(source, 'java');
     expect(findByRule(results, 'CG-002').length).toBe(0);
   });
 });

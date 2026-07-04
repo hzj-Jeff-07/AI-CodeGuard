@@ -93,8 +93,8 @@ custom rules 当前也共享这一能力边界，因此它们：
 
 | 规则 ID | 名称 | 严重级别 | 语言 | 当前核心检测信号 |
 |---------|------|----------|------|------------------|
-| `CG-001` | SQL Injection | critical | JS / TS / Python / Go | `query` / `execute` / `raw` / `exec` / `prepare` 等数据库调用，且参数中存在模板字符串或字符串拼接；Go 侧匹配 `db.Query/Exec/Prepare*` 的拼接或 `fmt.Sprintf` 组装，以及组装 SQL 的 `fmt.Sprintf` 本身 |
-| `CG-002` | Command Injection | critical | JS / TS / Python / Go | `exec` / `spawn` / `system` / `subprocess` 等命令执行调用，且参数带动态拼接；Go 侧匹配 `exec.Command(Context)` 的字符串拼接或 `fmt.Sprintf` |
+| `CG-001` | SQL Injection | critical | JS / TS / Python / Go / Java | `query` / `execute` / `raw` / `exec` / `prepare` 等数据库调用，且参数中存在模板字符串或字符串拼接；Go 侧匹配 `db.Query/Exec/Prepare*` 的拼接或 `fmt.Sprintf` 组装，以及组装 SQL 的 `fmt.Sprintf` 本身；Java 侧匹配 `executeQuery/executeUpdate/prepareStatement` 等的拼接或 `String.format`，以及组装 SQL 的 `String.format` 本身 |
+| `CG-002` | Command Injection | critical | JS / TS / Python / Go / Java | `exec` / `spawn` / `system` / `subprocess` 等命令执行调用，且参数带动态拼接；Go 侧匹配 `exec.Command(Context)` 的字符串拼接或 `fmt.Sprintf`；Java 侧匹配 `Runtime.getRuntime().exec` / `new ProcessBuilder` 的拼接或 `String.format` |
 | `CG-003` | Code Injection (eval) | critical | JS / TS / Python | `eval` / `Function` / `setTimeout` / `setInterval` 等危险调用 |
 | `CG-010` | Cross-Site Scripting (XSS) | high | JS / TS | `innerHTML` / `outerHTML` / `document.write` / `insertAdjacentHTML` |
 | `CG-011` | DOM-based XSS | high | JS / TS | 同一节点同时包含 DOM source 与 sink |
@@ -263,8 +263,8 @@ rules:
 
 当前规则系统最重要的限制有：
 
-1. **Go 支持是 MVP 范围**
-   - `CG-001` / `CG-002` / `CG-020` / `CG-030` / `CG-060` 共 5 条规则覆盖 Go；其余 8 条不在 `.go` 文件上运行。
+1. **Go / Java 支持是 MVP 范围**
+   - Go：`CG-001` / `CG-002` / `CG-020` / `CG-030` / `CG-060` 共 5 条；Java：`CG-001` / `CG-002` 共 2 条。其余规则不在对应语言文件上运行。
    - Stage 1 无数据流分析：`query := fmt.Sprintf(...)` 两步写法靠 “Sprintf 组装 SQL” 启发式命中；内联 `db.Query(fmt.Sprintf(...))` 会同时报外层调用与内层 Sprintf 两条。
 2. **`rules test` 是 Stage 1-only smoke path**
    - 用于验证 custom rules 命中情况，不覆盖 Stage 2。
