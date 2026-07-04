@@ -11,7 +11,7 @@ export const DEFAULT_CONFIG: CodeGuardConfig = {
   },
   llm: {
     provider: 'claude',
-    model: 'claude-sonnet-4-6',
+    model: 'claude-sonnet-5',
     maxConcurrency: 5,
   },
   output: {

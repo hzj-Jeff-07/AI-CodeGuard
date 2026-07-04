@@ -278,6 +278,25 @@ describe('CG-060: SSRF', () => {
     const results = await scanCode('fetch("https://api.example.com/data")');
     expect(findByRule(results, 'CG-060').length).toBe(0);
   });
+
+  it('does not flag Express route registration as SSRF', async () => {
+    const results = await scanCode(
+      "app.get('/view', (req, res) => { res.send(req.params.file); })",
+    );
+    expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+
+  it('does not flag router.post route registration as SSRF', async () => {
+    const results = await scanCode(
+      "router.post('/upload', (req, res) => { res.json(req.body); })",
+    );
+    expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+
+  it('still detects http module calls with user input', async () => {
+    const results = await scanCode('http.get(req.query.url)');
+    expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 // ── Integration: Fixture Scanning ───────────────────────────────

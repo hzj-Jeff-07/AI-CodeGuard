@@ -14,7 +14,7 @@ export const ConfigSchema = z.object({
 
   llm: z.object({
     provider: z.enum(['claude', 'openai']).default('claude'),
-    model: z.string().default('claude-sonnet-4-6'),
+    model: z.string().default('claude-sonnet-5'),
     apiKey: z.string().optional(),
     maxConcurrency: z.number().min(1).max(20).default(5),
     maxCostUSD: z.number().optional(),

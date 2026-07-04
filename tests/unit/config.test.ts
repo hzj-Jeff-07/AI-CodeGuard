@@ -12,7 +12,7 @@ describe('ConfigSchema', () => {
     expect(config.rules.preset).toBe('owasp-top-10');
     expect(config.rules.disable).toEqual([]);
     expect(config.llm.provider).toBe('claude');
-    expect(config.llm.model).toBe('claude-sonnet-4-6');
+    expect(config.llm.model).toBe('claude-sonnet-5');
     expect(config.llm.maxConcurrency).toBe(5);
     expect(config.output.format).toBe('text');
     expect(config.cache.enabled).toBe(false);

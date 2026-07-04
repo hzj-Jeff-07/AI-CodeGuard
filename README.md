@@ -18,7 +18,7 @@ What is implemented today:
 - Config loading via `.codeguard.yml` / environment variables
 - Disk cache for Stage 2 LLM results (`cache.enabled`), wired into the scan pipeline
 - GitHub composite Action (`action.yml`) plus CI / SARIF-upload workflows
-- Automated validation with **187 passing tests across 10 test files** (`npm run test:run` on 2026-07-04)
+- Automated validation with **190 passing tests across 10 test files** (`npm run test:run` on 2026-07-04)
 
 What is **not** complete yet:
 - Expanded language support beyond JS / TS / Python (Go / Java planned)
@@ -121,7 +121,7 @@ Current boundary:
 - `rules.custom` can point to a YAML file or directory
 - directories load `*.yml` / `*.yaml` recursively
 - `disable` applies to built-in and custom rules by rule ID
-- `rules --list` still shows only built-in rules
+- `rules --list` shows built-in rules plus custom rules from config (`--config` supported)
 - `rules create` writes a minimal YAML scaffold and supports `--force`
 - `rules validate` checks YAML parsing, schema validity, and duplicate rule IDs
 - `rules test` is a **Stage 1-only** custom-rule smoke path, so it does not require an API key
@@ -168,7 +168,7 @@ rules:
 
 llm:
   provider: claude
-  model: claude-sonnet-4-6
+  model: claude-sonnet-5
   maxConcurrency: 5
 
 output:
@@ -277,7 +277,7 @@ npm run test:run
 Result:
 - build passed
 - `10` test files passed
-- `187` tests passed
+- `190` tests passed
 
 ## Limitations
 
@@ -285,7 +285,6 @@ Current known limitations:
 - default non-dry-run scans need an API key if Stage 2 is reached
 - parser uses Tree-sitter with a compatibility-preserving normalized AST layer
 - model-cost enforcement depends on a built-in pricing table; if `llm.maxCostUSD` is set for an unknown model, the scan fails fast
-- `rules --list` only shows built-in rules, not the custom rules loaded from config
 - `rules test` is intentionally Stage 1-only and does not exercise Stage 2
 - only JavaScript / TypeScript / Python are supported in code
 - `config.output.format` is defined, but the scan command’s CLI default still prefers text unless `--output` is explicitly provided

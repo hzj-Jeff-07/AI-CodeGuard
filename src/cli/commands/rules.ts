@@ -26,8 +26,10 @@ export function createRulesCommand(): Command {
   const command = new Command('rules')
     .description('List and manage detection rules')
     .option('--list', 'List all available rules', true)
-    .action(() => {
+    .option('--config <path>', 'Path to config file (used to locate custom rules)')
+    .action(async (opts: { config?: string }) => {
       printBuiltInRules();
+      await printCustomRules(opts.config);
     });
 
   command
@@ -139,6 +141,38 @@ function printBuiltInRules(): void {
   console.log('');
   console.log(`  Total: ${rules.length} rules`);
   console.log('');
+}
+
+async function printCustomRules(configPath?: string): Promise<void> {
+  let customPath: string | undefined;
+  try {
+    const config = await loadConfig(configPath);
+    customPath = config.rules.custom;
+  } catch {
+    return; // no readable config — built-in listing already printed
+  }
+
+  if (!customPath) return;
+
+  try {
+    const validated = await validateCustomRules(customPath, getAllRuleIds());
+    if (validated.definitions.length === 0) return;
+
+    console.log(`  Custom Rules (${customPath})`);
+    console.log('  ' + '-'.repeat(60));
+    for (const rule of validated.definitions) {
+      console.log(
+        `  ${rule.id.padEnd(8)}  ${rule.name.padEnd(30)}  ${rule.severity.padEnd(8)}  ${rule.languages.join(', ')}`,
+      );
+    }
+    console.log('');
+    console.log(`  Total custom: ${validated.definitions.length} rules`);
+    console.log('');
+  } catch (error) {
+    console.log(`  Custom rules (${customPath}) could not be loaded:`);
+    console.log(`    ${error instanceof Error ? error.message : error}`);
+    console.log('');
+  }
 }
 
 function createRulesTestConfig(config: CodeGuardConfig, rulesPath: string): CodeGuardConfig {
