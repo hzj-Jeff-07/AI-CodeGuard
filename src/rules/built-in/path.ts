@@ -9,13 +9,21 @@ const PATH_FUNCTIONS_PY = ['open', 'read', 'write', 'listdir', 'remove', 'unlink
 const PATH_FUNCTIONS_GO = ['Open', 'OpenFile', 'Create', 'ReadFile', 'WriteFile',
   'Remove', 'RemoveAll', 'ReadDir', 'Mkdir', 'MkdirAll'];
 const PATH_OBJECTS_GO = ['os', 'ioutil'];
+// Constructors (`new File(...)`) have no receiver; static helpers are gated on
+// the Files/Paths receiver so e.g. `map.get(...)` never matches.
+const PATH_CONSTRUCTORS_JAVA = ['File', 'FileInputStream', 'FileOutputStream',
+  'FileReader', 'FileWriter', 'RandomAccessFile'];
+const PATH_METHODS_JAVA = ['readAllBytes', 'readAllLines', 'readString', 'write',
+  'writeString', 'newInputStream', 'newOutputStream', 'newBufferedReader',
+  'newBufferedWriter', 'delete', 'deleteIfExists', 'createDirectories', 'get', 'of'];
+const PATH_OBJECTS_JAVA = ['Files', 'Paths', 'Path'];
 
 export const pathTraversal: BuiltInRule = {
   id: 'CG-030',
   name: 'Path Traversal',
   severity: 'high',
   category: 'path',
-  languages: ['javascript', 'typescript', 'python', 'go'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
   description: 'Detects file operations with user-controlled paths that may allow directory traversal.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -27,6 +35,12 @@ export const pathTraversal: BuiltInRule = {
     if (ctx.language === 'go') {
       if (!PATH_FUNCTIONS_GO.includes(call.name)) return null;
       if (!call.object || !PATH_OBJECTS_GO.includes(call.object)) return null;
+    } else if (ctx.language === 'java') {
+      const isConstructor = !call.object && PATH_CONSTRUCTORS_JAVA.includes(call.name);
+      const isStaticHelper = call.object !== null
+        && PATH_OBJECTS_JAVA.includes(call.object)
+        && PATH_METHODS_JAVA.includes(call.name);
+      if (!isConstructor && !isStaticHelper) return null;
     } else {
       const fns = ctx.language === 'python' ? PATH_FUNCTIONS_PY : PATH_FUNCTIONS_JS;
       if (!fns.includes(call.name)) return null;
@@ -34,7 +48,8 @@ export const pathTraversal: BuiltInRule = {
 
     const hasDynamic = node.children.some(
       c => c.type === 'template_string' || c.type === 'string_concat'
-    ) || (ctx.language === 'go' && /\bfmt\.Sprintf\s*\(/.test(call.fullExpression));
+    ) || (ctx.language === 'go' && /\bfmt\.Sprintf\s*\(/.test(call.fullExpression))
+      || (ctx.language === 'java' && /\bString\.format\s*\(/.test(call.fullExpression));
     if (!hasDynamic) return null;
 
     // Check for path sanitization in context
@@ -43,6 +58,11 @@ export const pathTraversal: BuiltInRule = {
       return null; // Likely sanitized
     }
     if (ctx.language === 'go' && context.includes('filepath.Clean') && context.includes('HasPrefix')) {
+      return null; // Likely sanitized
+    }
+    if (ctx.language === 'java'
+      && (context.includes('normalize') || context.includes('getCanonicalPath'))
+      && context.includes('startsWith')) {
       return null; // Likely sanitized
     }
 

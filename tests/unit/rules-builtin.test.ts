@@ -309,6 +309,126 @@ func f() (*http.Response, error) {
   });
 });
 
+// ── Java stretch rules: CG-020 / CG-030 / CG-060 ────────────────
+
+describe('CG-020: Hardcoded Credentials (Java)', () => {
+  it('detects field with password literal', async () => {
+    const source = `class T {
+  private String password = "SuperSecret123!";
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-020').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects local api key literal', async () => {
+    const source = `class T {
+  String f() {
+    String apiKey = "sk-live-9f8e7d6c5b4a3210";
+    return apiKey;
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-020').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores credentials read from the environment', async () => {
+    const source = `class T {
+  String f() {
+    String password = System.getenv("DB_PASSWORD");
+    return password;
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-020').length).toBe(0);
+  });
+});
+
+describe('CG-030: Path Traversal (Java)', () => {
+  it('detects new File with concatenated path', async () => {
+    const source = `class T {
+  File f(String name) {
+    return new File("/data/uploads/" + name);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-030').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects Files helper with String.format-built path', async () => {
+    const source = `class T {
+  String f(String day) throws Exception {
+    return Files.readString(Paths.get(String.format("/var/log/%s.log", day)));
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-030').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores static paths', async () => {
+    const source = `class T {
+  byte[] f() throws Exception {
+    return Files.readAllBytes(Paths.get("/etc/app/config.yml"));
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-030').length).toBe(0);
+  });
+
+  it('ignores paths normalized and prefix-checked', async () => {
+    const source = `class T {
+  byte[] f(String name) throws Exception {
+    Path target = Paths.get("/data/uploads/" + name).normalize();
+    if (!target.startsWith("/data/uploads")) throw new SecurityException("bad path");
+    return Files.readAllBytes(target);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-030').length).toBe(0);
+  });
+
+  it('ignores non-file objects with matching method names', async () => {
+    const source = `class T {
+  String f(Map<String, String> map, String key) {
+    return map.get("prefix-" + key);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-030').length).toBe(0);
+  });
+});
+
+describe('CG-060: SSRF (Java)', () => {
+  it('detects new URL with concatenated host', async () => {
+    const source = `class T {
+  URL f(String host) throws Exception {
+    return new URL("http://" + host + "/avatar.png");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects RestTemplate call with String.format-built URL', async () => {
+    const source = `class T {
+  String f(RestTemplate restTemplate, String endpoint) {
+    return restTemplate.getForObject(String.format("http://internal-api/%s", endpoint), String.class);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores static URLs', async () => {
+    const source = `class T {
+  URL f() throws Exception {
+    return new URL("https://status.example.com/health");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+});
+
 // ── CG-003: Code Injection ──────────────────────────────────────
 
 describe('CG-003: Code Injection', () => {

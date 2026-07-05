@@ -1,7 +1,7 @@
 import type { ASTNode, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
 
-// `:=` covers Go short variable declarations; `[:=]` covers JS/TS/Python
+// `:=` covers Go short variable declarations; `[:=]` covers JS/TS/Python/Java
 const CRED_PATTERNS = /(?:password|passwd|secret|api[_-]?key|token|credential|auth[_-]?token|private[_-]?key)\s*(?::=|[:=])\s*['"`](?![\s'"`${}])[^'"`]{3,}['"`]/i;
 
 export const hardcodedCredentials: BuiltInRule = {
@@ -9,7 +9,7 @@ export const hardcodedCredentials: BuiltInRule = {
   name: 'Hardcoded Credentials',
   severity: 'high',
   category: 'auth',
-  languages: ['javascript', 'typescript', 'python', 'go'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
   description: 'Detects hardcoded passwords, API keys, and secrets in source code.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {

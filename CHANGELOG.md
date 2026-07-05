@@ -2,6 +2,16 @@
 
 All notable changes to AI-CodeGuard are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Java rule parity with Go** — Java now covers the same 5 rules as Go:
+  - `CG-020` Hardcoded Credentials — field and local-variable literal assignments (`String password = "..."`); values read from `System.getenv` are not flagged
+  - `CG-030` Path Traversal — `new File/FileInputStream/FileOutputStream/FileReader/FileWriter/RandomAccessFile` constructors and `Files`/`Paths` static helpers with concatenated or `String.format`-built paths; `normalize()`/`getCanonicalPath()` + `startsWith` in surrounding context is treated as sanitized
+  - `CG-060` SSRF — `new URL/HttpGet/HttpPost/...`, `URI.create`, and RestTemplate-style calls (`getForObject`, `exchange`, …) with concatenated or `String.format`-built URLs
+- 11 new tests (Java stretch-rule units + vulnerable/safe Java fixtures `Stretch.java` / `SecureStretch.java`); suite now at 236 tests
+
 ## [0.2.0] — 2026-07-04
 
 ### Added
