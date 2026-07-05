@@ -1,4 +1,5 @@
 import type { Finding, ScanResult, Severity } from '../types/index.js';
+import { VERSION } from '../version.js';
 
 interface SarifLog {
   $schema: string;
@@ -82,8 +83,8 @@ export function formatSARIF(result: ScanResult): string {
       tool: {
         driver: {
           name: 'AI-CodeGuard',
-          version: '0.2.0',
-          informationUri: 'https://github.com/user/ai-codeguard',
+          version: VERSION,
+          informationUri: 'https://github.com/hzj-Jeff-07/AI-CodeGuard',
           rules: Array.from(ruleMap.entries()).map(([id, f]) => ({
             id,
             name: f.title.replace(/\s+/g, ''),

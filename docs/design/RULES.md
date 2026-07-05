@@ -98,14 +98,14 @@ custom rules 当前也共享这一能力边界，因此它们：
 | `CG-003` | Code Injection (eval) | critical | JS / TS / Python | `eval` / `Function` / `setTimeout` / `setInterval` 等危险调用 |
 | `CG-010` | Cross-Site Scripting (XSS) | high | JS / TS | `innerHTML` / `outerHTML` / `document.write` / `insertAdjacentHTML` |
 | `CG-011` | DOM-based XSS | high | JS / TS | 同一节点同时包含 DOM source 与 sink |
-| `CG-020` | Hardcoded Credentials | high | JS / TS / Python / Go | `password` / `secret` / `token` / `api_key` 等敏感赋值模式；Go 侧覆盖 `:=` / `var` / `const` 字面量赋值 |
+| `CG-020` | Hardcoded Credentials | high | JS / TS / Python / Go / Java | `password` / `secret` / `token` / `api_key` 等敏感赋值模式；Go 侧覆盖 `:=` / `var` / `const` 字面量赋值；Java 侧覆盖字段与局部变量字面量赋值 |
 | `CG-021` | Weak Cryptography | medium | JS / TS / Python | `md5` / `sha1` / `des` / `rc4` / `md4` 等弱算法 |
-| `CG-030` | Path Traversal | high | JS / TS / Python / Go | 文件路径操作 + 动态路径拼接；Go 侧匹配 `os` / `ioutil` 文件函数的拼接或 `fmt.Sprintf` 路径 |
+| `CG-030` | Path Traversal | high | JS / TS / Python / Go / Java | 文件路径操作 + 动态路径拼接；Go 侧匹配 `os` / `ioutil` 文件函数的拼接或 `fmt.Sprintf` 路径；Java 侧匹配 `new File/FileInputStream/...` 构造器与 `Files`/`Paths` 静态方法的拼接或 `String.format` 路径，`normalize()`/`getCanonicalPath()` + `startsWith` 视为已消毒 |
 | `CG-031` | Arbitrary File Read/Write | high | JS / TS / Python | `readFile` / `writeFile` / `open` 等操作直接引用 `req` / `params` / `query` / `args` |
 | `CG-040` | Sensitive Data Exposure | medium | JS / TS / Python | 日志调用中出现 `password` / `token` / `secret` / PII 模式 |
 | `CG-041` | Insecure Deserialization | high | JS / TS / Python | `deserialize` / `unserialize` / `pickle.loads` / `yaml.load` |
 | `CG-050` | Security Misconfiguration | medium | JS / TS / Python | CORS `*`、`secure: false`、`httpOnly: false`、`verify=False` 等配置模式 |
-| `CG-060` | Server-Side Request Forgery (SSRF) | high | JS / TS / Python / Go | HTTP 请求 URL 来自动态拼接或明显用户输入；Go 侧匹配 `http.*` 调用的拼接或 `fmt.Sprintf` URL |
+| `CG-060` | Server-Side Request Forgery (SSRF) | high | JS / TS / Python / Go / Java | HTTP 请求 URL 来自动态拼接或明显用户输入；Go 侧匹配 `http.*` 调用的拼接或 `fmt.Sprintf` URL；Java 侧匹配 `new URL/HttpGet/HttpPost/...`、`URI.create` 与 RestTemplate 风格方法（`getForObject`/`exchange` 等）的拼接或 `String.format` URL |
 
 ## 6. 当前 custom rules 运行时形态
 
@@ -263,9 +263,9 @@ rules:
 
 当前规则系统最重要的限制有：
 
-1. **Go / Java 支持是 MVP 范围**
-   - Go：`CG-001` / `CG-002` / `CG-020` / `CG-030` / `CG-060` 共 5 条；Java：`CG-001` / `CG-002` 共 2 条。其余规则不在对应语言文件上运行。
-   - Stage 1 无数据流分析：`query := fmt.Sprintf(...)` 两步写法靠 “Sprintf 组装 SQL” 启发式命中；内联 `db.Query(fmt.Sprintf(...))` 会同时报外层调用与内层 Sprintf 两条。
+1. **Go / Java 支持是 5 规则范围**
+   - Go 与 Java 均支持 `CG-001` / `CG-002` / `CG-020` / `CG-030` / `CG-060` 共 5 条。其余规则不在对应语言文件上运行。
+   - Stage 1 无数据流分析：`query := fmt.Sprintf(...)` 两步写法靠 “Sprintf 组装 SQL” 启发式命中；内联 `db.Query(fmt.Sprintf(...))` / `Files.readString(Paths.get(...))` 会同时报外层调用与内层调用两条。
 2. **`rules test` 是 Stage 1-only smoke path**
    - 用于验证 custom rules 命中情况，不覆盖 Stage 2。
 3. **custom rules 仍受限于当前归一化 AST 能力**

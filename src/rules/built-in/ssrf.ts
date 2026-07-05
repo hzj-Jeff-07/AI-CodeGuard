@@ -6,13 +6,18 @@ import type { BuiltInRule, RuleCheckContext } from '../engine.js';
 // route registrations (`app.get`, `router.post`) and produce false positives.
 const STANDALONE_HTTP_FUNCTIONS = ['fetch', 'axios', 'request', 'urlopen'];
 const HTTP_MODULES = ['axios', 'fetch', 'http', 'https', 'request', 'got', 'node-fetch', 'urllib', 'requests', 'httpx'];
+// Java is gated on its own allowlists: constructors (`new URL(...)`, Apache
+// HttpClient request objects) plus RestTemplate/WebClient-style method names,
+// which are distinctive enough to match without a receiver check.
+const HTTP_CONSTRUCTORS_JAVA = ['URL', 'HttpGet', 'HttpPost', 'HttpPut', 'HttpDelete', 'HttpPatch'];
+const HTTP_METHODS_JAVA = ['getForObject', 'getForEntity', 'postForObject', 'postForEntity', 'exchange'];
 
 export const ssrf: BuiltInRule = {
   id: 'CG-060',
   name: 'Server-Side Request Forgery (SSRF)',
   severity: 'high',
   category: 'ssrf',
-  languages: ['javascript', 'typescript', 'python', 'go'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
   description: 'Detects HTTP requests where the URL is constructed from user input.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -21,15 +26,20 @@ export const ssrf: BuiltInRule = {
     const call = ctx.extractCallInfo(node);
     if (!call) return null;
 
-    const isHttpCall = call.object
-      ? HTTP_MODULES.some(m => call.object!.includes(m))
-      : STANDALONE_HTTP_FUNCTIONS.includes(call.name);
+    const isHttpCall = ctx.language === 'java'
+      ? (!call.object && HTTP_CONSTRUCTORS_JAVA.includes(call.name))
+        || HTTP_METHODS_JAVA.includes(call.name)
+        || (call.object === 'URI' && call.name === 'create')
+      : call.object
+        ? HTTP_MODULES.some(m => call.object!.includes(m))
+        : STANDALONE_HTTP_FUNCTIONS.includes(call.name);
     if (!isHttpCall) return null;
 
     // Check if URL argument contains dynamic content
     const hasDynamic = node.children.some(
       c => c.type === 'template_string' || c.type === 'string_concat'
-    ) || (ctx.language === 'go' && /\bfmt\.Sprintf\s*\(/.test(call.fullExpression));
+    ) || (ctx.language === 'go' && /\bfmt\.Sprintf\s*\(/.test(call.fullExpression))
+      || (ctx.language === 'java' && /\bString\.format\s*\(/.test(call.fullExpression));
 
     // Or if the URL references user input
     const text = call.fullExpression;

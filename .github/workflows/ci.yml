@@ -33,3 +33,54 @@ jobs:
 
       - name: Run tests
         run: npm run test:run
+
+  # Smoke-tests the composite action itself (action.yml), which the unit
+  # suite cannot cover: vulnerable fixtures must yield findings and a valid
+  # SARIF file; safe fixtures must yield zero findings and exit 0.
+  action-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Scan vulnerable fixtures with the local action
+        id: vulnerable
+        uses: ./
+        with:
+          paths: tests/fixtures/vulnerable
+          output-file: smoke-vulnerable.sarif
+          fail-on-findings: 'false'
+
+      - name: Assert vulnerable scan produced findings and valid SARIF
+        env:
+          FINDINGS: ${{ steps.vulnerable.outputs.findings-count }}
+          SARIF_FILE: ${{ steps.vulnerable.outputs.sarif-file }}
+        run: |
+          set -euo pipefail
+          echo "findings-count=$FINDINGS sarif-file=$SARIF_FILE"
+          test -f "$SARIF_FILE"
+          [ "$FINDINGS" -gt 0 ]
+          node -e '
+            const sarif = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            const driver = sarif.runs?.[0]?.tool?.driver;
+            if (sarif.version !== "2.1.0") throw new Error("unexpected SARIF version");
+            if (driver?.name !== "AI-CodeGuard") throw new Error("unexpected driver name");
+            if (!driver?.version) throw new Error("missing driver version");
+            if ((sarif.runs[0].results ?? []).length === 0) throw new Error("no results");
+          ' "$SARIF_FILE"
+
+      - name: Scan safe fixtures with the local action (must pass)
+        id: safe
+        uses: ./
+        with:
+          paths: tests/fixtures/safe
+          output-file: smoke-safe.sarif
+          fail-on-findings: 'true'
+
+      - name: Assert safe scan reported zero findings
+        env:
+          FINDINGS: ${{ steps.safe.outputs.findings-count }}
+        run: |
+          set -euo pipefail
+          echo "findings-count=$FINDINGS"
+          [ "$FINDINGS" -eq 0 ]

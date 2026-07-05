@@ -1,6 +1,6 @@
 # AI-CodeGuard 文档状态与最终一致性报告
 
-> ⚠️ **状态更新（2026-07-04）**：本文正文写于 2026-04-12，其中关于 “cache 未接入 / GitHub Action 未完成 / 171 个测试 / 仅支持 JS-TS-Python” 的描述已过时。当前事实：Stage 2 磁盘缓存已接入 `scan()`、composite Action 与 CI / SARIF 上传 workflow 已交付且全绿、Go 已支持 5 条规则、默认模型为 `claude-sonnet-5`、测试为 217 个（10 个文件）。以 `README.md` 与 `CHANGELOG.md` 为准，本文正文保留作历史快照。
+> ⚠️ **状态更新（2026-07-05）**：本文正文写于 2026-04-12，其中关于 “cache 未接入 / GitHub Action 未完成 / 171 个测试 / 仅支持 JS-TS-Python” 的描述已过时。当前事实：Stage 2 磁盘缓存已接入 `scan()`、composite Action 与 CI / SARIF 上传 workflow 已交付且全绿、Go 与 Java 均已支持 5 条规则（CG-001/002/020/030/060）、默认模型为 `claude-sonnet-5`、测试为 277 个（11 个文件，另有 1 个 opt-in 真实 provider E2E 默认跳过）。以 `README.md` 与 `CHANGELOG.md` 为准，本文正文保留作历史快照。
 
 > 本文档记录 **2026-04-12** 对 AI-CodeGuard 核心文档做的最终一致性清查结果，用于快速回答两个问题：
 >

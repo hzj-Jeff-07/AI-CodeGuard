@@ -8,7 +8,7 @@ AI-CodeGuard is currently in a **Phase 1** state, but the runtime pipeline is no
 
 What is implemented today:
 - CLI commands: `scan`, `init`, `rules` (`--list`, `validate`, `create`, `test`)
-- Local scanning for **JavaScript, TypeScript, Python, Go, and Java (MVP)**
+- Local scanning for **JavaScript, TypeScript, Python, Go, and Java**
 - **13 built-in OWASP-oriented rules**
 - Optional YAML custom rule loading through `rules.custom`
 - Custom rule CLI workflow through **`rules validate/create/test`**
@@ -18,11 +18,11 @@ What is implemented today:
 - Config loading via `.codeguard.yml` / environment variables
 - Disk cache for Stage 2 LLM results (`cache.enabled`), wired into the scan pipeline
 - GitHub composite Action (`action.yml`) plus CI / SARIF-upload workflows
-- Automated validation with **225 passing tests across 10 test files** (`npm run test:run` on 2026-07-04)
+- Automated validation with **277 passing tests across 11 test files** (`npm run test:run` on 2026-07-05), plus an opt-in real-provider E2E test (skipped without `CODEGUARD_E2E=1` + API key) and a CI smoke job exercising the composite Action against the fixtures
 
 What is **not** complete yet:
-- Java coverage beyond the 2-rule MVP (credentials / path traversal / SSRF planned)
-- npm publish / versioned releases (no `v0.2.0` tag yet)
+- npm registry publish (GitHub tags exist via the release workflow, but the package is not on npm yet)
+- `v0.3.0` tag — code and CHANGELOG are release-ready; trigger the manual `release` workflow with tag `v0.3.0` after merging to `main`
 
 ### Completion Snapshot
 
@@ -34,7 +34,7 @@ What is **not** complete yet:
 | M3 Tree-sitter parser | Done | main parser now uses Tree-sitter-backed normalized AST |
 | M4 Custom rules runtime | Done | `rules.custom` is wired into `scan()`, and `rules validate/create/test` are available |
 | M5 GitHub / CI integration | Done | composite `action.yml`, `ci.yml`, and `security-scan.yml` (SARIF upload to Code Scanning) exist and pass |
-| M6 More languages | Done (MVP scope) | Go: 5 rules; Java: 2-rule MVP (SQL + command injection) |
+| M6 More languages | Done | Go: 5 rules; Java: 5 rules (`CG-001`/`CG-002`/`CG-020`/`CG-030`/`CG-060`) |
 
 ### Terminology
 
@@ -130,7 +130,7 @@ Defaults: Stage 1 only (no API key needed), fails the job on critical/high findi
 | TypeScript | `.ts`, `.tsx` | all 13 built-in rules |
 | Python | `.py` | all 13 built-in rules |
 | Go | `.go` | `CG-001` SQL injection, `CG-002` command injection, `CG-020` hardcoded credentials, `CG-030` path traversal, `CG-060` SSRF |
-| Java | `.java` | MVP: `CG-001` SQL injection (incl. `String.format`), `CG-002` command injection (`Runtime.exec`, `ProcessBuilder`) |
+| Java | `.java` | `CG-001` SQL injection (incl. `String.format`), `CG-002` command injection (`Runtime.exec`, `ProcessBuilder`), `CG-020` hardcoded credentials, `CG-030` path traversal (`File`/`Files`/`Paths`), `CG-060` SSRF (`URL`, RestTemplate) |
 
 ### Built-in Rule Set
 
@@ -138,11 +138,11 @@ Defaults: Stage 1 only (no API key needed), fails the job on critical/high findi
 |----------|----------|-------|
 | Injection | `CG-001`, `CG-002`, `CG-003` | SQL injection, command injection, eval/code injection; `CG-001`/`CG-002` also cover Go and Java |
 | XSS | `CG-010`, `CG-011` | Reflected/DOM-based XSS |
-| Auth / Crypto | `CG-020`, `CG-021` | Hardcoded credentials (also Go), weak cryptography |
-| Path | `CG-030`, `CG-031` | Path traversal (also Go), arbitrary file read/write |
+| Auth / Crypto | `CG-020`, `CG-021` | Hardcoded credentials (also Go and Java), weak cryptography |
+| Path | `CG-030`, `CG-031` | Path traversal (also Go and Java), arbitrary file read/write |
 | Data | `CG-040`, `CG-041` | Sensitive data exposure, insecure deserialization |
 | Config | `CG-050` | Security misconfiguration |
-| SSRF | `CG-060` | Server-side request forgery (also Go) |
+| SSRF | `CG-060` | Server-side request forgery (also Go and Java) |
 
 Total: **13 built-in rules**.
 
@@ -317,7 +317,7 @@ npm run test:run
 Result:
 - build passed
 - `10` test files passed
-- `225` tests passed
+- `277` tests passed (plus 1 opt-in E2E skipped without an API key)
 
 ## Limitations
 
@@ -326,7 +326,7 @@ Current known limitations:
 - parser uses Tree-sitter with a compatibility-preserving normalized AST layer
 - model-cost enforcement depends on a built-in pricing table; if `llm.maxCostUSD` is set for an unknown model, the scan fails fast
 - `rules test` is intentionally Stage 1-only and does not exercise Stage 2
-- Go support covers 5 rules (`CG-001`/`CG-002`/`CG-020`/`CG-030`/`CG-060`); Java covers 2 (`CG-001`/`CG-002`). Stage 1 has no dataflow analysis, so inline `db.Query(fmt.Sprintf(...))` / `executeQuery(String.format(...))` may report both the outer call and the inner format call
+- Go and Java support covers 5 rules each (`CG-001`/`CG-002`/`CG-020`/`CG-030`/`CG-060`). Stage 1 has no dataflow analysis, so inline `db.Query(fmt.Sprintf(...))` / `Files.readString(Paths.get(...))` may report both the outer call and the inner call
 - `config.output.format` is defined, but the scan command’s CLI default still prefers text unless `--output` is explicitly provided
 - fix suggestions are advisory only; the CLI does not rewrite files automatically
 

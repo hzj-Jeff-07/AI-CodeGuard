@@ -200,9 +200,8 @@ SARIF formatter 已经实现，输出版本为：
 
 ### 6.5 当前限制
 
-- 仓库中还没有 GitHub Action 封装与自动上传链路
-- `informationUri` 当前仍是占位式链接：`https://github.com/user/ai-codeguard`
-- SARIF 已能导出，但还不是“完整 GitHub 集成产品”
+- GitHub Action 封装与 SARIF 上传链路已交付（`action.yml` + `security-scan.yml`）
+- `informationUri` 已指向真实仓库：`https://github.com/hzj-Jeff-07/AI-CodeGuard`
 
 ## 7. 输出到文件
 

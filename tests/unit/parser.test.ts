@@ -212,6 +212,146 @@ describe('parse', () => {
   });
 });
 
+// ── parse precision & compatibility ──────────────────────────────
+
+describe('parse precision & compatibility', () => {
+  it('reports accurate 1-based line numbers for nodes on later lines', async () => {
+    const source = '// header\n// comment\n\nconst a = 1;\npool.query(`SELECT ${a}`);\n';
+    const tree = await parse(source, 'typescript');
+    const call = tree.root.children.find(n => n.type === 'function_call');
+    expect(call).toBeDefined();
+    expect(call!.location.start.line).toBe(5);
+    expect(call!.location.start.column).toBe(0);
+  });
+
+  it('normalizes nested calls as separate function_call nodes', async () => {
+    const tree = await parse('outer(inner(x))', 'javascript');
+    const calls = tree.root.children.filter(n => n.type === 'function_call');
+    const texts = calls.map(n => n.text);
+    expect(texts.some(t => t.startsWith('outer('))).toBe(true);
+    expect(texts.some(t => t.startsWith('inner('))).toBe(true);
+  });
+
+  it('tolerates syntax errors without throwing (all languages)', async () => {
+    await expect(parse('const x = (]{ function', 'typescript')).resolves.toBeDefined();
+    await expect(parse('def broken(:\n  pass', 'python')).resolves.toBeDefined();
+    await expect(parse('package main\nfunc f( {', 'go')).resolves.toBeDefined();
+    await expect(parse('class T { void f( { }', 'java')).resolves.toBeDefined();
+  });
+
+  it('still detects sinks after a syntax error earlier in the file', async () => {
+    const source = 'const broken = (]\neval(userInput)\n';
+    const tree = await parse(source, 'javascript');
+    const calls = tree.root.children.filter(n => n.type === 'function_call');
+    expect(calls.some(n => n.text.startsWith('eval('))).toBe(true);
+  });
+
+  it('handles CRLF line endings with correct line numbers', async () => {
+    const source = 'const a = 1;\r\nconst b = 2;\r\npool.query(`SELECT ${a}`);\r\n';
+    const tree = await parse(source, 'typescript');
+    const call = tree.root.children.find(n => n.type === 'function_call');
+    expect(call).toBeDefined();
+    expect(call!.location.start.line).toBe(3);
+    expect(call!.children.some(n => n.type === 'template_string')).toBe(true);
+  });
+
+  it('handles CJK and emoji content without breaking detection', async () => {
+    const source = 'const 提示 = "你好🚀";\ndb.query("SELECT * FROM 用户 WHERE name = " + 提示);\n';
+    const tree = await parse(source, 'typescript');
+    const call = tree.root.children.find(n => n.type === 'function_call');
+    expect(call).toBeDefined();
+    expect(call!.children.some(n => n.type === 'string_concat')).toBe(true);
+    expect(call!.location.start.line).toBe(2);
+  });
+
+  it('normalizes Go var/const spec credentials at the parser level', async () => {
+    const source = 'package main\n\nvar apiKey = "sk-live-1234567890"\nconst token = "tok-abcdef123456"\n';
+    const tree = await parse(source, 'go');
+    const creds = tree.root.children.filter(n => n.rawType === 'hardcoded_credential');
+    expect(creds.length).toBe(2);
+  });
+
+  it('normalizes Java field credentials at the parser level', async () => {
+    const source = 'class T {\n  private String password = "hunter22";\n}\n';
+    const tree = await parse(source, 'java');
+    const creds = tree.root.children.filter(n => n.rawType === 'hardcoded_credential');
+    expect(creds.length).toBe(1);
+    expect(creds[0].location.start.line).toBe(2);
+  });
+
+  it('marks Java constructor arguments with concatenation as dynamic', async () => {
+    const source = 'class T { java.io.File f(String name) { return new java.io.File("/data/" + name); } }';
+    const tree = await parse(source, 'java');
+    const ctor = tree.root.children.find(n => n.type === 'function_call' && n.text.startsWith('new '));
+    expect(ctor).toBeDefined();
+    expect(ctor!.children.some(c => c.type === 'string_concat')).toBe(true);
+  });
+});
+
+// ── goAdapter / javaAdapter ──────────────────────────────────────
+
+function makeCallNode(text: string) {
+  return {
+    type: 'function_call' as const,
+    rawType: 'call_expression',
+    text,
+    location: { start: { line: 1, column: 0 }, end: { line: 1, column: text.length } },
+    children: [],
+    parent: null,
+    fields: {},
+  };
+}
+
+describe('goAdapter', () => {
+  it('maps Go raw types to standard types', () => {
+    const adapter = getAdapter('go');
+    expect(adapter.mapNodeType('call_expression')).toBe('function_call');
+    expect(adapter.mapNodeType('short_var_declaration')).toBe('assignment');
+    expect(adapter.mapNodeType('interpreted_string_literal')).toBe('literal');
+    expect(adapter.mapNodeType('mystery_node')).toBe('unknown');
+  });
+
+  it('extracts receiver and name from package-qualified calls', () => {
+    const info = getAdapter('go').extractCallInfo(makeCallNode('exec.Command("sh", "-c", cmd)'));
+    expect(info?.name).toBe('Command');
+    expect(info?.object).toBe('exec');
+  });
+
+  it('extracts bare function calls without an object', () => {
+    const info = getAdapter('go').extractCallInfo(makeCallNode('panic("boom")'));
+    expect(info?.name).toBe('panic');
+    expect(info?.object).toBeNull();
+  });
+});
+
+describe('javaAdapter', () => {
+  it('maps Java raw types to standard types', () => {
+    const adapter = getAdapter('java');
+    expect(adapter.mapNodeType('method_invocation')).toBe('function_call');
+    expect(adapter.mapNodeType('object_creation_expression')).toBe('function_call');
+    expect(adapter.mapNodeType('variable_declarator')).toBe('assignment');
+    expect(adapter.mapNodeType('mystery_node')).toBe('unknown');
+  });
+
+  it('strips the new keyword from constructor callees', () => {
+    const info = getAdapter('java').extractCallInfo(makeCallNode('new ProcessBuilder("sh", "-c", cmd)'));
+    expect(info?.name).toBe('ProcessBuilder');
+    expect(info?.object).toBeNull();
+  });
+
+  it('keeps the package qualifier as the object for qualified constructors', () => {
+    const info = getAdapter('java').extractCallInfo(makeCallNode('new java.io.File("/data/" + name)'));
+    expect(info?.name).toBe('File');
+    expect(info?.object).toBe('java.io');
+  });
+
+  it('resolves the outer argument list of chained invocations', () => {
+    const info = getAdapter('java').extractCallInfo(makeCallNode('Runtime.getRuntime().exec("ls " + dir)'));
+    expect(info?.name).toBe('exec');
+    expect(info?.object).toBe('Runtime.getRuntime()');
+  });
+});
+
 // ── walkAST ──────────────────────────────────────────────────────
 
 describe('walkAST', () => {

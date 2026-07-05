@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { formatJSON } from '../../src/reporter/json.js';
 import { formatSARIF } from '../../src/reporter/sarif.js';
 import { formatText } from '../../src/reporter/text.js';
+import { VERSION } from '../../src/version.js';
 import type { ScanResult, Finding } from '../../src/types/index.js';
 
 function makeScanResult(findings: Finding[] = [], overrides: Partial<ScanResult> = {}): ScanResult {
@@ -47,7 +48,7 @@ describe('formatJSON', () => {
   it('includes version field', () => {
     const result = makeScanResult();
     const parsed = JSON.parse(formatJSON(result));
-    expect(parsed.version).toBe('0.2.0');
+    expect(parsed.version).toBe(VERSION);
   });
 
   it('includes scan metadata', () => {
@@ -148,7 +149,7 @@ describe('formatSARIF', () => {
     const result = makeScanResult([makeFinding()]);
     const sarif = JSON.parse(formatSARIF(result));
     expect(sarif.runs[0].tool.driver.name).toBe('AI-CodeGuard');
-    expect(sarif.runs[0].tool.driver.version).toBe('0.2.0');
+    expect(sarif.runs[0].tool.driver.version).toBe(VERSION);
   });
 
   it('maps severity to SARIF level correctly', () => {
