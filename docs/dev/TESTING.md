@@ -15,7 +15,7 @@ npm run test:run
 
 - build 通过
 - `11` 个测试文件通过（另有 1 个 opt-in E2E 文件默认跳过）
-- `248` 个测试通过 + `1` 个默认跳过
+- `261` 个测试通过 + `1` 个默认跳过
 
 这说明当前 **两级扫描基线是稳定的**。
 
@@ -264,7 +264,7 @@ node dist/index.js scan ./src --output sarif
 1. ~~补真实 provider 的受控验收路径~~ ✅ 已完成（见 7.1，opt-in E2E）
 2. ~~为 pricing / unknown-model / budget overshoot 行为补更多测试~~ ✅ 已完成（analyzer.test.ts）
 3. **为 Tree-sitter 归一化 AST 继续补精度与兼容性测试**
-4. **补 custom rules 的加载 / 校验 / 失败路径 / 集成扫描测试**
+4. ~~补 custom rules 的加载 / 校验 / 失败路径 / 集成扫描测试~~ ✅ 已完成（rules-engine.test.ts：pattern 语义 — `function.on` / `arguments` / `hasExpressions` / `exclude` / 多 pattern OR / Python f-string；失败路径 — 路径不存在 / 空目录 / 标量 YAML / 空 pattern / 跨文件重复 ID / wrapper 与数组两种文件形态）
 5. ~~GitHub Action 上线后，新增最小 CI 集成测试~~ ✅ 已完成（`ci.yml` 的 `action-smoke` job）
 
 ## 11. 结论

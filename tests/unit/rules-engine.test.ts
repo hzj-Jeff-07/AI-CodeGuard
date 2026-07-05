@@ -222,6 +222,209 @@ patterns:
   });
 });
 
+// ── custom rule pattern semantics ────────────────────────────────
+
+describe('custom rule pattern semantics', () => {
+  async function scanWithRule(ruleYaml: string, source: string, lang: 'typescript' | 'python' = 'typescript') {
+    return withTempDir(async tempDir => {
+      const ruleFile = resolve(tempDir, 'rule.yml');
+      await writeFile(ruleFile, ruleYaml);
+      const rules = await loadRules({ preset: 'none', custom: ruleFile });
+      const tree = await parse(source, lang);
+      return runRules(tree, rules, lang === 'python' ? 'test.py' : 'test.ts');
+    });
+  }
+
+  const HEADER = `id: CR-200
+name: semantics rule
+severity: high
+category: injection
+languages: [typescript]
+description: pattern semantics test
+`;
+
+  it('matches function.on receivers and rejects other objects', async () => {
+    const rule = HEADER + `patterns:
+  - type: function_call
+    function:
+      match: [rawQuery]
+      on: [db]
+`;
+    expect(await scanWithRule(rule, 'db.rawQuery("SELECT 1")')).toHaveLength(1);
+    expect(await scanWithRule(rule, 'cache.rawQuery("SELECT 1")')).toHaveLength(0);
+    expect(await scanWithRule(rule, 'rawQuery("SELECT 1")')).toHaveLength(0);
+  });
+
+  it('requires template_string arguments with expressions when specified', async () => {
+    const rule = HEADER + `patterns:
+  - type: function_call
+    function:
+      match: [sink]
+    arguments:
+      - type: template_string
+        hasExpressions: true
+`;
+    expect(await scanWithRule(rule, 'sink(`SELECT ${id}`)')).toHaveLength(1);
+    expect(await scanWithRule(rule, 'sink(`SELECT 1`)')).toHaveLength(0);
+    expect(await scanWithRule(rule, 'sink("SELECT 1")')).toHaveLength(0);
+  });
+
+  it('matches string_concat arguments with the + operator', async () => {
+    const rule = HEADER + `patterns:
+  - type: function_call
+    function:
+      match: [sink]
+    arguments:
+      - type: string_concat
+        operator: "+"
+`;
+    expect(await scanWithRule(rule, 'sink("a" + userInput)')).toHaveLength(1);
+    expect(await scanWithRule(rule, 'sink("ab")')).toHaveLength(0);
+  });
+
+  it('suppresses matches via exclude patterns', async () => {
+    const rule = HEADER + `patterns:
+  - type: function_call
+    function:
+      match: [render]
+exclude:
+  - type: function_call
+    hasExpressions: false
+`;
+    expect(await scanWithRule(rule, 'render(`hello ${userInput}`)')).toHaveLength(1);
+    expect(await scanWithRule(rule, 'render("static")')).toHaveLength(0);
+  });
+
+  it('treats multiple patterns as OR', async () => {
+    const rule = HEADER + `patterns:
+  - type: function_call
+    function:
+      match: [dangerousA]
+  - type: function_call
+    function:
+      match: [dangerousB]
+`;
+    expect(await scanWithRule(rule, 'dangerousA()')).toHaveLength(1);
+    expect(await scanWithRule(rule, 'dangerousB()')).toHaveLength(1);
+    expect(await scanWithRule(rule, 'safeCall()')).toHaveLength(0);
+  });
+
+  it('detects Python f-string interpolation via hasExpressions', async () => {
+    const rule = `id: CR-201
+name: python f-string rule
+severity: high
+category: injection
+languages: [python]
+description: f-string test
+patterns:
+  - type: function_call
+    function:
+      match: [sink]
+    arguments:
+      - type: template_string
+        hasExpressions: true
+`;
+    expect(await scanWithRule(rule, 'sink(f"select {x}")', 'python')).toHaveLength(1);
+    expect(await scanWithRule(rule, 'sink(f"static")', 'python')).toHaveLength(0);
+  });
+
+  it('tags custom findings with their source file in metadata', async () => {
+    const rule = HEADER + `patterns:
+  - type: function_call
+    function:
+      match: [rawQuery]
+`;
+    const results = await scanWithRule(rule, 'rawQuery("x")');
+    expect(results).toHaveLength(1);
+    expect(results[0].metadata.source).toBe('custom');
+    expect(String(results[0].metadata.ruleSource)).toContain('rule.yml');
+  });
+});
+
+// ── custom rule loader failure paths ─────────────────────────────
+
+describe('custom rule loader failure paths', () => {
+  it('throws for a nonexistent custom rules path', async () => {
+    await expect(loadRules({ preset: 'none', custom: resolve(FIXTURES_DIR, 'does-not-exist.yml') }))
+      .rejects.toThrow('Custom rules path not found');
+  });
+
+  it('throws for a directory without YAML files', async () => {
+    await withTempDir(async tempDir => {
+      await writeFile(resolve(tempDir, 'notes.txt'), 'not a rule');
+      await expect(loadRules({ preset: 'none', custom: tempDir }))
+        .rejects.toThrow('No YAML custom rule files found');
+    });
+  });
+
+  it('throws for YAML that is not a rule shape (scalar document)', async () => {
+    await withTempDir(async tempDir => {
+      const ruleFile = resolve(tempDir, 'scalar.yml');
+      await writeFile(ruleFile, 'just a string');
+      await expect(loadRules({ preset: 'none', custom: ruleFile }))
+        .rejects.toThrow('Invalid custom rules');
+    });
+  });
+
+  it('throws for a pattern without any matcher', async () => {
+    await withTempDir(async tempDir => {
+      const ruleFile = resolve(tempDir, 'empty-pattern.yml');
+      await writeFile(ruleFile, `id: CR-210
+name: empty pattern
+severity: high
+category: injection
+languages: [typescript]
+description: pattern with no matcher
+patterns:
+  - {}
+`);
+      await expect(loadRules({ preset: 'none', custom: ruleFile }))
+        .rejects.toThrow('Pattern must define at least one matcher');
+    });
+  });
+
+  it('reports the first defining file for duplicate IDs across files', async () => {
+    await withTempDir(async tempDir => {
+      await writeFile(resolve(tempDir, 'a.yml'), makeCustomRuleYaml({ id: 'CR-300', functionName: 'sinkA' }));
+      await writeFile(resolve(tempDir, 'b.yml'), makeCustomRuleYaml({ id: 'CR-300', functionName: 'sinkB' }));
+
+      await expect(loadRules({ preset: 'none', custom: tempDir }))
+        .rejects.toThrow(/Duplicate custom rule ID "CR-300".*already defined in.*a\.yml/);
+    });
+  });
+
+  it('accepts both the rules-wrapper form and the top-level array form', async () => {
+    await withTempDir(async tempDir => {
+      await writeFile(resolve(tempDir, 'wrapper.yml'), `rules:
+  - id: CR-301
+    name: wrapped rule
+    severity: high
+    category: injection
+    languages: [typescript]
+    description: wrapper form
+    patterns:
+      - type: function_call
+        function:
+          match: [wrappedSink]
+`);
+      await writeFile(resolve(tempDir, 'array.yml'), `- id: CR-302
+  name: array rule
+  severity: high
+  category: injection
+  languages: [typescript]
+  description: array form
+  patterns:
+    - type: function_call
+      function:
+        match: [arraySink]
+`);
+
+      const rules = await loadRules({ preset: 'none', custom: tempDir });
+      expect(rules.map(rule => rule.id).sort()).toEqual(['CR-301', 'CR-302']);
+    });
+  });
+});
+
 // ── getAllRuleIds / getRuleById ──────────────────────────────────
 
 describe('getAllRuleIds', () => {
