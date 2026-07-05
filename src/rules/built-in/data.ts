@@ -33,8 +33,12 @@ export const sensitiveDataExposure: BuiltInRule = {
         && LOG_OBJECTS_JAVA.some(o => call.object!.toLowerCase().includes(o))
         && LOG_METHODS_JAVA.includes(call.name.toLowerCase());
     } else {
+      // Bare call names stay case-sensitive: lowercasing would make `new
+      // Error(...)` collide with the `error` entry in LOG_FUNCTIONS. Only
+      // the receiver object is matched case-insensitively, mirroring the
+      // Go/Java branches above (`Logger.fatal(...)` should match `logger`).
       isLogCall = LOG_FUNCTIONS.includes(call.name) ||
-        (call.object !== null && ['console', 'logger', 'log', 'logging'].includes(call.object));
+        (call.object !== null && ['console', 'logger', 'log', 'logging'].includes(call.object.toLowerCase()));
     }
     if (!isLogCall) return null;
 
