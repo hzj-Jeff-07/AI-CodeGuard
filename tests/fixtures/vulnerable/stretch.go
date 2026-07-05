@@ -1,7 +1,10 @@
 package main
 
 import (
+	"crypto/md5"
+	"crypto/tls"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 )
@@ -32,4 +35,19 @@ func fetchAvatar(userHost string) (*http.Response, error) {
 // Vulnerable: SSRF (CG-060) — Sprintf-built URL
 func callService(endpoint string) (*http.Response, error) {
 	return http.Get(fmt.Sprintf("http://internal-api/%s", endpoint))
+}
+
+// Vulnerable: Weak Cryptography (CG-021) — crypto/md5
+func hashPassword(password string) [16]byte {
+	return md5.Sum([]byte(password))
+}
+
+// Vulnerable: Sensitive Data Exposure (CG-040) — password logged
+func logLogin(password string) {
+	log.Printf("login attempt with password: %s", password)
+}
+
+// Vulnerable: Security Misconfiguration (CG-050) — TLS verification disabled
+func insecureClient() *tls.Config {
+	return &tls.Config{InsecureSkipVerify: true}
 }

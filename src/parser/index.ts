@@ -94,6 +94,10 @@ function normalizeStandaloneNode(node: TreeSitterNode, language: Language): ASTN
     return createNode('assignment', 'hardcoded_credential', node.text, toLocation(node));
   }
 
+  if (isConfigLiteralNode(node, language)) {
+    return createNode('unknown', node.type, node.text, toLocation(node));
+  }
+
   return null;
 }
 
@@ -184,6 +188,14 @@ function isHardcodedCredentialNode(node: TreeSitterNode, language: Language): bo
   }
 
   return HARDCODED_CREDENTIAL_PATTERN.test(node.text);
+}
+
+// CG-050 (security misconfiguration) matches on raw node text, but Stage 1
+// only normalizes call/template/concat/credential nodes into the tree. Go
+// misconfigurations like `&tls.Config{InsecureSkipVerify: true}` are struct
+// literals, not calls, so they'd never reach the rule without this.
+function isConfigLiteralNode(node: TreeSitterNode, language: Language): boolean {
+  return language === 'go' && node.type === 'composite_literal';
 }
 
 function isAssignmentLikeNode(node: TreeSitterNode, language: Language): boolean {

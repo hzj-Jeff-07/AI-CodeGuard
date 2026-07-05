@@ -2,6 +2,18 @@
 
 All notable changes to AI-CodeGuard are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Deeper Go/Java rule coverage** — Go goes from 5 to 8 built-in rules, Java from 5 to 9:
+  - `CG-021` Weak Cryptography — Go: any call into the `crypto/md5`/`sha1`/`des`/`rc4` packages (the package itself is the weak-algorithm signal, e.g. `md5.Sum(...)`, `des.NewCipher(...)`); Java: `MessageDigest`/`Cipher.getInstance(...)` called with a weak algorithm string (`"MD5"`, `"SHA-1"`, `"DES"`, `"RC4"`); `"SHA-256"` and other strong algorithms are not flagged
+  - `CG-040` Sensitive Data Exposure — Go: `log`/`logrus`/`zap`/`zerolog` logging calls; Java: `logger`/`log`/`System.out`/`System.err` logging calls; both reuse the existing password/token/secret/PII text heuristics
+  - `CG-041` Insecure Deserialization (Java only) — `readObject()` method calls, the classic `ObjectInputStream`/`XMLDecoder` gadget-chain vector; Go has no equivalently clean idiom and is not covered
+  - `CG-050` Security Misconfiguration — Go: `tls.Config{InsecureSkipVerify: true}`; Java: Spring `.csrf().disable()`, `.allowedOrigins("*")`, `setSecure(false)`, `setHttpOnly(false)`
+  - Parser-level addition: Go `composite_literal` nodes (struct literals like `&tls.Config{...}`) are now normalized into the AST so text-pattern rules like `CG-050` can see them — previously only call/template/concat/credential nodes were reachable, so a misconfiguration expressed as a struct literal (not wrapped in a function call) was invisible to Stage 1
+  - 20 new tests across the four rules; suite now at 297 tests (+1 opt-in skip)
+
 ## [0.3.0] — 2026-07-05
 
 ### Added

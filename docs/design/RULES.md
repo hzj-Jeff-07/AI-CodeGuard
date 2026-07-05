@@ -14,7 +14,7 @@
 - `rules create` 负责生成最小可用 rule scaffold，支持 `--force`
 - `rules test` 复用 `scan()` 主流程，以 **Stage 1-only** 方式验证 custom rules
 - 运行方式：`scan()` 中先加载规则，再对 Tree-sitter 归一化 ASTree 执行逐节点检查
-- 支持语言：JavaScript / TypeScript / Python（全部 13 条规则）/ Go / Java（各 5 条：CG-001/002/020/030/060）
+- 支持语言：JavaScript / TypeScript / Python（全部 13 条规则）/ Go（8 条）/ Java（9 条，详见第 9 节）
 
 当前**尚未实现**：
 
@@ -99,12 +99,12 @@ custom rules 当前也共享这一能力边界，因此它们：
 | `CG-010` | Cross-Site Scripting (XSS) | high | JS / TS | `innerHTML` / `outerHTML` / `document.write` / `insertAdjacentHTML` |
 | `CG-011` | DOM-based XSS | high | JS / TS | 同一节点同时包含 DOM source 与 sink |
 | `CG-020` | Hardcoded Credentials | high | JS / TS / Python / Go / Java | `password` / `secret` / `token` / `api_key` 等敏感赋值模式；Go 侧覆盖 `:=` / `var` / `const` 字面量赋值；Java 侧覆盖字段与局部变量字面量赋值 |
-| `CG-021` | Weak Cryptography | medium | JS / TS / Python | `md5` / `sha1` / `des` / `rc4` / `md4` 等弱算法 |
+| `CG-021` | Weak Cryptography | medium | JS / TS / Python / Go / Java | `md5` / `sha1` / `des` / `rc4` / `md4` 等弱算法；Go 侧匹配 `crypto/md5|sha1|des|rc4` 包本身（包名即信号，不看具体方法）；Java 侧匹配 `MessageDigest`/`Cipher.getInstance(...)` 传入弱算法字符串（`sha256` 等强算法不命中） |
 | `CG-030` | Path Traversal | high | JS / TS / Python / Go / Java | 文件路径操作 + 动态路径拼接；Go 侧匹配 `os` / `ioutil` 文件函数的拼接或 `fmt.Sprintf` 路径；Java 侧匹配 `new File/FileInputStream/...` 构造器与 `Files`/`Paths` 静态方法的拼接或 `String.format` 路径，`normalize()`/`getCanonicalPath()` + `startsWith` 视为已消毒 |
 | `CG-031` | Arbitrary File Read/Write | high | JS / TS / Python | `readFile` / `writeFile` / `open` 等操作直接引用 `req` / `params` / `query` / `args` |
-| `CG-040` | Sensitive Data Exposure | medium | JS / TS / Python | 日志调用中出现 `password` / `token` / `secret` / PII 模式 |
-| `CG-041` | Insecure Deserialization | high | JS / TS / Python | `deserialize` / `unserialize` / `pickle.loads` / `yaml.load` |
-| `CG-050` | Security Misconfiguration | medium | JS / TS / Python | CORS `*`、`secure: false`、`httpOnly: false`、`verify=False` 等配置模式 |
+| `CG-040` | Sensitive Data Exposure | medium | JS / TS / Python / Go / Java | 日志调用中出现 `password` / `token` / `secret` / PII 模式；Go 侧匹配 `log`/`logrus`/`zap`/`zerolog` 等对象的日志方法；Java 侧匹配 `logger`/`log`/`System.out`/`System.err` 的日志方法 |
+| `CG-041` | Insecure Deserialization | high | JS / TS / Python / Java | `deserialize` / `unserialize` / `pickle.loads` / `yaml.load`；Java 侧匹配 `readObject()` 方法调用（`ObjectInputStream`/`XMLDecoder` 经典 gadget-chain 入口，方法名本身信号足够明确，无需限定接收者）；Go 无清晰对等写法，暂不覆盖 |
+| `CG-050` | Security Misconfiguration | medium | JS / TS / Python / Go / Java | CORS `*`、`secure: false`、`httpOnly: false`、`verify=False` 等配置模式；Go 侧新增 `InsecureSkipVerify: true`（`tls.Config` 结构体字面量，Stage 1 已扩展归一化层专门识别 Go `composite_literal` 节点以支持此匹配）；Java 侧新增 Spring `.csrf().disable()`、`.allowedOrigins("*")`、`setSecure(false)`、`setHttpOnly(false)` |
 | `CG-060` | Server-Side Request Forgery (SSRF) | high | JS / TS / Python / Go / Java | HTTP 请求 URL 来自动态拼接或明显用户输入；Go 侧匹配 `http.*` 调用的拼接或 `fmt.Sprintf` URL；Java 侧匹配 `new URL/HttpGet/HttpPost/...`、`URI.create` 与 RestTemplate 风格方法（`getForObject`/`exchange` 等）的拼接或 `String.format` URL |
 
 ## 6. 当前 custom rules 运行时形态
@@ -263,9 +263,9 @@ rules:
 
 当前规则系统最重要的限制有：
 
-1. **Go / Java 支持是 5 规则范围**
-   - Go 与 Java 均支持 `CG-001` / `CG-002` / `CG-020` / `CG-030` / `CG-060` 共 5 条。其余规则不在对应语言文件上运行。
-   - Stage 1 无数据流分析：`query := fmt.Sprintf(...)` 两步写法靠 “Sprintf 组装 SQL” 启发式命中；内联 `db.Query(fmt.Sprintf(...))` / `Files.readString(Paths.get(...))` 会同时报外层调用与内层调用两条。
+1. **Go / Java 覆盖范围**
+   - Go 支持 `CG-001` / `CG-002` / `CG-020` / `CG-021` / `CG-030` / `CG-040` / `CG-050` / `CG-060` 共 8 条；Java 在此基础上再加 `CG-041` 共 9 条。`CG-003`（eval/code injection）、`CG-010`/`CG-011`（XSS）、`CG-031`（arbitrary file access）在两种语言里都还没有清晰对等写法，暂不覆盖。
+   - Stage 1 无数据流分析：`query := fmt.Sprintf(...)` 两步写法靠 “Sprintf 组装 SQL” 启发式命中；内联 `db.Query(fmt.Sprintf(...))` / `Files.readString(Paths.get(...))` 会同时报外层调用与内层调用两条；同理，嵌套的 Go struct 字面量（例如 `tls.Config` 嵌在 `http.Transport` 里）也可能在内外两层各报一次 `CG-050`。
 2. **`rules test` 是 Stage 1-only smoke path**
    - 用于验证 custom rules 命中情况，不覆盖 Stage 2。
 3. **custom rules 仍受限于当前归一化 AST 能力**

@@ -1,6 +1,6 @@
 # AI-CodeGuard 开发路线图
 
-> ⚠️ **状态更新（2026-07-05）**：本文正文写于 2026-04-12，其中关于 “cache 未接入 / GitHub Action 未完成 / 171 个测试 / 仅支持 JS-TS-Python” 的描述已过时。当前事实：Stage 2 磁盘缓存已接入 `scan()`、composite Action 与 CI / SARIF 上传 workflow 已交付且全绿、Go 与 Java 均已支持 5 条规则（CG-001/002/020/030/060）、默认模型为 `claude-sonnet-5`、测试为 277 个（11 个文件，另有 1 个 opt-in 真实 provider E2E 默认跳过）。以 `README.md` 与 `CHANGELOG.md` 为准，本文正文保留作历史快照。
+> ⚠️ **状态更新（2026-07-05）**：本文正文写于 2026-04-12，其中关于 “cache 未接入 / GitHub Action 未完成 / 171 个测试 / 仅支持 JS-TS-Python” 的描述已过时。当前事实：Stage 2 磁盘缓存已接入 `scan()`、composite Action 与 CI / SARIF 上传 workflow 已交付且全绿、Go 已支持 8 条规则、Java 已支持 9 条规则（CG-001/002/020/021/030/040/041(仅Java)/050/060）、默认模型为 `claude-sonnet-5`、测试为 297 个（11 个文件，另有 1 个 opt-in 真实 provider E2E 默认跳过）。以 `README.md` 与 `CHANGELOG.md` 为准，本文正文保留作历史快照。
 
 > 本路线图以当前源码为基线，截至 **2026-04-12**。它用于说明“下一步做什么”，**不是**对已上线能力的宣称。
 
@@ -43,7 +43,7 @@
 | M3 | 用 Tree-sitter 替换轻量 parser | 已完成 | 主流程 parser 已改为 Tree-sitter 兼容归一化实现 |
 | M4 | Custom rules runtime | 已完成 | `rules.custom` 可加载，且 `rules validate/create/test` 已提供工作流 |
 | M5 | GitHub / CI 产品化集成 | 已完成（2026-05-28） | composite `action.yml` + `ci.yml` + `security-scan.yml`（SARIF 上传 Code Scanning） |
-| M6 | 扩展语言支持 | 已完成（2026-07-05） | Go 与 Java 均支持 5 条规则（CG-001/002/020/030/060） |
+| M6 | 扩展语言支持 | 已完成（2026-07-05） | Go 支持 8 条规则，Java 支持 9 条规则（在 CG-001/002/020/030/060 基础上深化了 CG-021/040/050，Java 额外覆盖 CG-041） |
 
 ## 4. 推荐优先级
 
