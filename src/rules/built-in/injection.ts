@@ -136,10 +136,12 @@ const CMD_OBJECTS_JS = ['child_process', 'cp', 'childProcess'];
 const CMD_FUNCTIONS_PY = ['system', 'popen', 'call', 'run', 'check_output', 'check_call', 'Popen'];
 const CMD_OBJECTS_PY = ['os', 'subprocess'];
 const CMD_FUNCTIONS_GO = ['Command', 'CommandContext'];
-// `exec`/`system`/`popen` are already caught below via CMD_FUNCTIONS /
-// CMD_FUNCTIONS_PY (PHP shares those names); these three have no equivalent
-// in the other languages' lists.
-const CMD_FUNCTIONS_PHP = ['shell_exec', 'passthru', 'proc_open'];
+// `exec` is already caught below via CMD_FUNCTIONS (isJSCmd applies to any
+// non-Java language). `system`/`popen` are listed explicitly here rather
+// than relying on CMD_FUNCTIONS_PY, since isPyCmd is gated to Python only —
+// matching Python's generic names (`call`, `run`, `Popen`) against bare PHP
+// functions would false-positive on unrelated code with those same names.
+const CMD_FUNCTIONS_PHP = ['system', 'popen', 'shell_exec', 'passthru', 'proc_open'];
 
 export const commandInjection: BuiltInRule = {
   id: 'CG-002',
@@ -158,7 +160,8 @@ export const commandInjection: BuiltInRule = {
     const isJSCmd = ctx.language !== 'java' &&
       CMD_FUNCTIONS.includes(call.name) &&
       (!call.object || CMD_OBJECTS_JS.some(o => call.object!.includes(o)));
-    const isPyCmd = CMD_FUNCTIONS_PY.includes(call.name) &&
+    const isPyCmd = ctx.language === 'python' &&
+      CMD_FUNCTIONS_PY.includes(call.name) &&
       (!call.object || CMD_OBJECTS_PY.some(o => call.object!.includes(o)));
     const isGoCmd = ctx.language === 'go' &&
       CMD_FUNCTIONS_GO.includes(call.name) &&

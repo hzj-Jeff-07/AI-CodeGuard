@@ -175,6 +175,17 @@ func f(dir string) {
     const results = await scanCode(source, 'go');
     expect(findByRule(results, 'CG-002').length).toBe(0);
   });
+
+  it('ignores a call to an unrelated bare function named like a Python subprocess helper', async () => {
+    // Regression guard: isPyCmd must not match Go just because a bare
+    // function CALL happens to share a name with Python's subprocess API.
+    const source = `package main
+func build(target string) string {
+	return run("building " + target)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-002').length).toBe(0);
+  });
 });
 
 // ── CG-002: Command Injection (Java) ────────────────────────────
@@ -640,6 +651,18 @@ describe('CG-040: Sensitive Data Exposure', () => {
     const results = await scanCode('console.log("hello world")');
     expect(findByRule(results, 'CG-040').length).toBe(0);
   });
+
+  it('detects a capitalized logger object and method (case-insensitive match)', async () => {
+    const results = await scanCode('Logger.fatal("token=" + token)');
+    expect(findByRule(results, 'CG-040').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not mistake `new Error(...)` for a bare log call', async () => {
+    // Regression guard: bare call names must stay case-sensitive.
+    // Lowercasing `Error` collides with the `error` entry in LOG_FUNCTIONS.
+    const results = await scanCode('new Error("password reset failed for " + token)');
+    expect(findByRule(results, 'CG-040').length).toBe(0);
+  });
 });
 
 describe('CG-040: Sensitive Data Exposure (Go)', () => {
@@ -929,6 +952,26 @@ describe('CG-002: Command Injection (PHP)', () => {
 
   it('ignores static commands', async () => {
     const source = '<?php exec("ls -la", $output); ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-002').length).toBe(0);
+  });
+
+  it('detects system with concatenation', async () => {
+    const source = '<?php function f($dir) { system("ls -la " . $dir); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects popen with concatenation', async () => {
+    const source = '<?php function f($dir) { popen("ls -la " . $dir, "r"); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a call to an unrelated bare function named like a Python subprocess helper', async () => {
+    // Regression guard: isPyCmd must not match PHP just because a bare
+    // function CALL happens to share a name with Python's subprocess API.
+    const source = '<?php function build($target) { return run("building " . $target); } ?>';
     const results = await scanCode(source, 'php');
     expect(findByRule(results, 'CG-002').length).toBe(0);
   });

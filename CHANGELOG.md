@@ -28,8 +28,11 @@ All notable changes to AI-CodeGuard are documented here. The format follows [Kee
 
 - **Nested same-rule duplicate findings** — Stage 1's lack of dataflow analysis meant a rule could independently fire on both an outer call and a call nested inside it for the same underlying issue (e.g. `db.Query(fmt.Sprintf(...))` reported the `db.Query` call and the `fmt.Sprintf` call as two separate `CG-001` findings; nesting a Go `tls.Config` literal inside an `http.Transport` literal double-reported `CG-050`). `runRules()` now suppresses a finding when its location is fully contained within another finding of the same rule in the same file, keeping only the outer, more-contextual one. The genuinely separate two-step pattern (`query := fmt.Sprintf(...); db.Query(query)`, not nested) is unaffected and still reported once.
 - 5 new tests covering the suppression and confirming the two-step pattern still reports
+- **`CG-040` missed capitalized logger objects in JS/TS/Python** — the Go/Java branches added above lowercase the receiver before matching (`Logger.fatal(...)` → `logger`), but the pre-existing JS/TS/Python branch never did, so the same call pattern (e.g. `Logger.fatal("token=" + token)`) was silently missed in those languages while the equivalent Go/Java code was caught. The receiver is now matched case-insensitively there too. Bare call names deliberately stay case-sensitive — lowercasing them would make `new Error(...)` collide with the `error` entry in `LOG_FUNCTIONS` and misclassify ordinary error construction as a log call (caught by self-scanning `src/` after the initial fix and narrowed before commit).
+- **`CG-002`'s Python-function matching wasn't gated to Python** — `isPyCmd` (matching bare `system`/`popen`/`call`/`run`/`Popen`/etc.) never checked `ctx.language`, so adding PHP to `CG-002`'s language list newly exposed any Go/PHP codebase to false positives from unrelated bare functions coincidentally named `call`/`run`/`Popen` with dynamic string content. `isPyCmd` is now gated to Python; PHP's `system`/`popen` (previously covered only as a side effect of the ungated check) are now matched explicitly via `CMD_FUNCTIONS_PHP` instead.
+- 6 new tests: capitalized-logger-object detection, the `new Error(...)` false-positive guard, PHP `system`/`popen` detection, and Go/PHP guards against the cross-language false positive
 
-Suite now at 329 tests (+1 opt-in skip).
+Suite now at 335 tests (+1 opt-in skip).
 
 ## [0.3.0] — 2026-07-05
 
