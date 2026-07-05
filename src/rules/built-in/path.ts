@@ -93,7 +93,7 @@ const READ_WRITE_GO = ['Open', 'OpenFile', 'Create', 'ReadFile', 'WriteFile'];
 const READ_WRITE_OBJECTS_GO = ['os', 'ioutil'];
 // net/http's Request fields and common router libs (gorilla/mux, gin) are the
 // usual sources of attacker-controlled path segments in Go web handlers.
-const USER_INPUT_GO = /\b(r\.URL\.Query|r\.FormValue|r\.PostFormValue|mux\.Vars|c\.Param\(|c\.Query\(|os\.Args)\b/;
+const USER_INPUT_GO = /\b(r\.URL\.Query|r\.FormValue|r\.PostFormValue|mux\.Vars|c\.Param|c\.Query|os\.Args)\b/;
 
 const READ_WRITE_CONSTRUCTORS_JAVA = ['File', 'FileInputStream', 'FileOutputStream',
   'FileReader', 'FileWriter'];

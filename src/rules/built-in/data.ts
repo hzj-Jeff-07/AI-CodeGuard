@@ -38,7 +38,11 @@ export const sensitiveDataExposure: BuiltInRule = {
         && LOG_OBJECTS_JAVA.some(o => call.object!.toLowerCase().includes(o))
         && LOG_METHODS_JAVA.includes(call.name.toLowerCase());
     } else if (ctx.language === 'php') {
-      isLogCall = LOG_FUNCTIONS_PHP.includes(call.name) ||
+      // PHP function calls are case-insensitive at the language level (unlike
+      // JS, where `new Error(...)` must stay case-sensitive to avoid
+      // colliding with the `error` entry in LOG_FUNCTIONS), so lowercasing
+      // the bare function name here is safe.
+      isLogCall = LOG_FUNCTIONS_PHP.includes(call.name.toLowerCase()) ||
         (call.object !== null
           && LOG_OBJECTS_PHP.some(o => call.object!.toLowerCase().includes(o))
           && LOG_METHODS_PHP.includes(call.name.toLowerCase()));
@@ -113,6 +117,15 @@ export const insecureDeserialization: BuiltInRule = {
     // global `unserialize()` — the classic PHP object-injection gadget-chain
     // vector — since both languages' rule branch reach this same check.
     if (DESER_FUNCTIONS_JS.includes(call.name)) {
+      // PHP's dangerous global `unserialize()` takes no receiver. A method
+      // named `unserialize` on an object (e.g. implementing the standard
+      // `Serializable` interface) is an unrelated, benign pattern that just
+      // happens to share the name — only the bare call is the gadget-chain
+      // vector.
+      if (ctx.language === 'php' && call.object !== null) {
+        return null;
+      }
+
       return {
         file: ctx.file,
         language: ctx.language,

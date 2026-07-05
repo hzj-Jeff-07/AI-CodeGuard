@@ -13,14 +13,24 @@ const XSS_SINK_FUNCTIONS_PY = ['mark_safe', 'Markup', 'render_template_string'];
 // automatic output encoding.
 const XSS_SINK_METHODS_JAVA = ['write', 'print', 'println'];
 
-// A lone string-literal argument is inert output; anything else (a variable,
-// an f-string, string concatenation, a nested call) means the sink is
-// rendering something other than a fixed literal.
+// A lone string-literal argument (or no argument at all) is inert output;
+// anything else (a variable, an f-string, string concatenation, a nested
+// call) means the sink is rendering something other than a fixed literal.
 function hasOnlyStaticStringArg(fullExpression: string): boolean {
   const argsStart = findOuterArgumentsStart(fullExpression);
   if (argsStart === -1) return false;
   const argsText = fullExpression.slice(argsStart + 1, fullExpression.lastIndexOf(')')).trim();
-  return /^['"][^'"]*['"]$/.test(argsText);
+  return argsText === '' || /^['"][^'"]*['"]$/.test(argsText);
+}
+
+// Catches the common two-step idiom `PrintWriter out = response.getWriter();
+// out.println(...)`, not just the chained one-liner
+// `response.getWriter().write(...)` — Stage 1 has no dataflow analysis, so
+// this is a textual check that the receiver was assigned from a
+// `getWriter()` call somewhere in the surrounding context.
+function wasAssignedFromGetWriter(varName: string, context: string): boolean {
+  const escaped = varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}\\s*=[^;\\n]*\\bgetWriter\\(\\)`).test(context);
 }
 
 export const xssReflected: BuiltInRule = {
@@ -43,8 +53,9 @@ export const xssReflected: BuiltInRule = {
 
       const isSink = ctx.language === 'python'
         ? call.object === null && XSS_SINK_FUNCTIONS_PY.includes(call.name)
-        : call.object !== null && call.object.includes('getWriter')
-          && XSS_SINK_METHODS_JAVA.includes(call.name);
+        : call.object !== null && XSS_SINK_METHODS_JAVA.includes(call.name)
+          && (call.object.includes('getWriter')
+            || wasAssignedFromGetWriter(call.object, ctx.getContext(node, 3)));
       if (!isSink) return null;
       if (hasOnlyStaticStringArg(call.fullExpression)) return null;
 

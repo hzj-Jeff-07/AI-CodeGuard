@@ -525,6 +525,30 @@ describe('CG-010: Cross-Site Scripting (XSS) (Java)', () => {
     const results = await scanCode(source, 'java');
     expect(findByRule(results, 'CG-010').length).toBe(0);
   });
+
+  it('detects the two-step PrintWriter idiom (assignment, then println elsewhere)', async () => {
+    // Regression guard: the sink check previously required "getWriter" to
+    // appear textually in the same call expression, missing the standard
+    // JSP/servlet idiom of assigning the writer to a variable first.
+    const source = `class T {
+  void f(HttpServletResponse response, HttpServletRequest request) throws Exception {
+    PrintWriter out = response.getWriter();
+    out.println(request.getParameter("name"));
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-010').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a zero-argument println on the response writer', async () => {
+    const source = `class T {
+  void f(HttpServletResponse response) throws Exception {
+    response.getWriter().println();
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-010').length).toBe(0);
+  });
 });
 
 // ── CG-011: DOM-based XSS ──────────────────────────────────────
@@ -710,6 +734,18 @@ func f(r *http.Request) (*os.File, error) {
     expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('detects os.ReadFile with a quoted gin c.Param(...) argument', async () => {
+    // Regression guard: the USER_INPUT_GO regex previously required a word
+    // character immediately after `c.Param(`/`c.Query(`, which a quoted
+    // string argument never satisfies — the overwhelmingly common real form.
+    const source = `package main
+func f(c *gin.Context) ([]byte, error) {
+	return os.ReadFile(c.Param("filename"))
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+
   it('ignores os.Open with a static path', async () => {
     const source = `package main
 func f() (*os.File, error) {
@@ -870,6 +906,11 @@ describe('CG-040: Sensitive Data Exposure (PHP)', () => {
     const results = await scanCode('<?php $logger->info("server started");', 'php');
     expect(findByRule(results, 'CG-040').length).toBe(0);
   });
+
+  it('detects a differently-cased bare error_log call (PHP function names are case-insensitive)', async () => {
+    const results = await scanCode('<?php Error_Log("password=" . $password);', 'php');
+    expect(findByRule(results, 'CG-040').length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 // ── CG-041: Insecure Deserialization ────────────────────────────
@@ -921,6 +962,15 @@ describe('CG-041: Insecure Deserialization (PHP)', () => {
 
   it('ignores unrelated function calls', async () => {
     const results = await scanCode('<?php $s = trim($data);', 'php');
+    expect(findByRule(results, 'CG-041').length).toBe(0);
+  });
+
+  it('ignores a method named unserialize() on an object (Serializable interface)', async () => {
+    // Regression guard: PHP's dangerous global unserialize() takes no
+    // receiver. A class implementing the standard Serializable interface
+    // defines its own unserialize() method, which is an unrelated, benign
+    // pattern that happens to share the name.
+    const results = await scanCode('<?php $session->unserialize($data);', 'php');
     expect(findByRule(results, 'CG-041').length).toBe(0);
   });
 });
