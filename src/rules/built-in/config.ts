@@ -10,6 +10,13 @@ const MISCONFIG_PATTERNS = [
   { pattern: /DEBUG\s*=\s*True/i, name: 'Debug mode enabled' },
   { pattern: /verify\s*=\s*False/i, name: 'SSL verification disabled' },
   { pattern: /rejectUnauthorized\s*:\s*false/i, name: 'TLS verification disabled' },
+  // Go: tls.Config{InsecureSkipVerify: true}
+  { pattern: /InsecureSkipVerify\s*:\s*true/, name: 'TLS verification disabled (Go)' },
+  // Java / Spring
+  { pattern: /\.csrf\(\s*\)\s*\.disable\(\s*\)/, name: 'CSRF protection disabled (Spring)' },
+  { pattern: /\.allowedOrigins\(\s*["'`]\*["'`]/, name: 'CORS wildcard origin (Spring)' },
+  { pattern: /\bsetSecure\(\s*false\s*\)/, name: 'Secure cookie flag disabled (Java)' },
+  { pattern: /\bsetHttpOnly\(\s*false\s*\)/, name: 'HttpOnly flag disabled (Java)' },
 ];
 
 export const securityMisconfiguration: BuiltInRule = {
@@ -17,7 +24,7 @@ export const securityMisconfiguration: BuiltInRule = {
   name: 'Security Misconfiguration',
   severity: 'medium',
   category: 'config',
-  languages: ['javascript', 'typescript', 'python'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
   description: 'Detects common security misconfigurations (CORS wildcard, debug mode, disabled TLS verification).',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {

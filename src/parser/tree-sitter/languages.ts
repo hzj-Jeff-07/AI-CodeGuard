@@ -14,6 +14,7 @@ const BUNDLED_GRAMMAR_WASM_PATHS: Record<Language, string> = {
   python: join(packageRoot, 'dist', 'tree-sitter', 'tree-sitter-python.wasm'),
   go: join(packageRoot, 'dist', 'tree-sitter', 'tree-sitter-go.wasm'),
   java: join(packageRoot, 'dist', 'tree-sitter', 'tree-sitter-java.wasm'),
+  php: join(packageRoot, 'dist', 'tree-sitter', 'tree-sitter-php.wasm'),
 };
 
 const FALLBACK_GRAMMAR_WASM_PATHS: Record<Language, string> = {
@@ -22,6 +23,10 @@ const FALLBACK_GRAMMAR_WASM_PATHS: Record<Language, string> = {
   python: require.resolve('tree-sitter-python/tree-sitter-python.wasm'),
   go: require.resolve('tree-sitter-go/tree-sitter-go.wasm'),
   java: require.resolve('tree-sitter-java/tree-sitter-java.wasm'),
+  // The php grammar package also ships `php_only` (fragments without <?php
+  // tags); we want the full `php` grammar since real .php files mix HTML
+  // and PHP tags.
+  php: require.resolve('tree-sitter-php/tree-sitter-php.wasm'),
 };
 
 export function resolveCoreWasmPath(): string {

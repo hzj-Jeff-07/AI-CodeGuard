@@ -119,11 +119,14 @@ source code
 | JavaScript | `javascriptAdapter` |
 | TypeScript | `typescriptAdapter` |
 | Python | `pythonAdapter` |
+| Go | `goAdapter` |
+| Java | `javaAdapter` |
+| PHP | `phpAdapter` |
 
 ### 3.4 当前限制
 
 当前 parser 仍然不提供：
-- Java / Go / Rust 解析
+- Rust / C++ 等其余语言解析
 - 跨文件语义分析
 - 污点传播或 CFG
 - 直接向规则层暴露 Tree-sitter 原生节点
@@ -153,6 +156,7 @@ interface ASTVisitor {
 - 按语言过滤适用规则
 - 遍历 AST 节点并执行规则
 - 对重复命中位置做去重
+- 对同一 ruleId 下、位置完全被另一条命中"包含"的嵌套重复项做抑制（如 `db.Query(fmt.Sprintf(...))` 内联嵌套只保留外层一条）
 
 ### 5.2 当前规则集合
 

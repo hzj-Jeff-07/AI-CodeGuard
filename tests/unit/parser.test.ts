@@ -43,6 +43,10 @@ describe('detectLanguage', () => {
     expect(detectLanguage('Main.java')).toBe('java');
   });
 
+  it('maps .php to php', () => {
+    expect(detectLanguage('index.php')).toBe('php');
+  });
+
   it('returns null for unsupported extensions', () => {
     expect(detectLanguage('style.css')).toBeNull();
     expect(detectLanguage('README.md')).toBeNull();
@@ -77,6 +81,12 @@ describe('getAdapter', () => {
     expect(adapter.language).toBe('go');
     expect(adapter.fileExtensions).toContain('.go');
   });
+
+  it('returns php adapter', () => {
+    const adapter = getAdapter('php');
+    expect(adapter.language).toBe('php');
+    expect(adapter.fileExtensions).toContain('.php');
+  });
 });
 
 // ── getSupportedExtensions ──────────────────────────────────────
@@ -90,6 +100,7 @@ describe('getSupportedExtensions', () => {
     expect(exts).toContain('.tsx');
     expect(exts).toContain('.jsx');
     expect(exts).toContain('.go');
+    expect(exts).toContain('.php');
   });
 });
 
@@ -150,6 +161,48 @@ describe('parse', () => {
     const call = tree.root.children.find(n => n.type === 'function_call' && n.text.includes('exec.Command'));
     expect(call).toBeDefined();
     expect(call!.children.some(c => c.type === 'string_concat')).toBe(true);
+  });
+
+  it('parses PHP and extracts the outer call of a chained invocation', async () => {
+    const source = '<?php $r = $conn->prepare($sql)->execute(); ?>';
+    const tree = await parse(source, 'php');
+    const call = tree.root.children.find(n => n.type === 'function_call' && n.text.includes('->execute('));
+    expect(call).toBeDefined();
+    const { getAdapter } = await import('../../src/parser/index.js');
+    const info = getAdapter('php').extractCallInfo(call!);
+    expect(info?.name).toBe('execute');
+    expect(info?.object).toBe('$conn->prepare($sql)');
+  });
+
+  it('marks PHP `.` string concatenation as dynamic call argument (not `+`)', async () => {
+    const source = '<?php exec("ls -la " . $dir); ?>';
+    const tree = await parse(source, 'php');
+    const call = tree.root.children.find(n => n.type === 'function_call' && n.text.startsWith('exec('));
+    expect(call).toBeDefined();
+    expect(call!.children.some(c => c.type === 'string_concat')).toBe(true);
+  });
+
+  it('treats PHP interpolated encapsed_string as a dynamic template_string', async () => {
+    const source = '<?php mysqli_query($conn, "SELECT * FROM users WHERE id = $id"); ?>';
+    const tree = await parse(source, 'php');
+    const call = tree.root.children.find(n => n.type === 'function_call' && n.text.includes('mysqli_query'));
+    expect(call).toBeDefined();
+    expect(call!.children.some(c => c.type === 'template_string')).toBe(true);
+  });
+
+  it('does not treat a non-interpolated PHP encapsed_string as dynamic', async () => {
+    const source = '<?php mysqli_query($conn, "SELECT * FROM users"); ?>';
+    const tree = await parse(source, 'php');
+    const call = tree.root.children.find(n => n.type === 'function_call' && n.text.includes('mysqli_query'));
+    expect(call).toBeDefined();
+    expect(call!.children.some(n => n.type === 'template_string')).toBe(false);
+  });
+
+  it('normalizes PHP hardcoded credential assignments', async () => {
+    const source = '<?php $password = "SuperSecret123!"; ?>';
+    const tree = await parse(source, 'php');
+    const creds = tree.root.children.filter(n => n.rawType === 'hardcoded_credential');
+    expect(creds.length).toBeGreaterThanOrEqual(1);
   });
 
   it('detects template literals with expressions', async () => {
@@ -349,6 +402,41 @@ describe('javaAdapter', () => {
     const info = getAdapter('java').extractCallInfo(makeCallNode('Runtime.getRuntime().exec("ls " + dir)'));
     expect(info?.name).toBe('exec');
     expect(info?.object).toBe('Runtime.getRuntime()');
+  });
+});
+
+describe('phpAdapter', () => {
+  it('maps PHP raw types to standard types', () => {
+    const adapter = getAdapter('php');
+    expect(adapter.mapNodeType('function_call_expression')).toBe('function_call');
+    expect(adapter.mapNodeType('member_call_expression')).toBe('function_call');
+    expect(adapter.mapNodeType('scoped_call_expression')).toBe('function_call');
+    expect(adapter.mapNodeType('assignment_expression')).toBe('assignment');
+    expect(adapter.mapNodeType('mystery_node')).toBe('unknown');
+  });
+
+  it('extracts bare function calls without an object', () => {
+    const info = getAdapter('php').extractCallInfo(makeCallNode('mysqli_query($conn, $sql)'));
+    expect(info?.name).toBe('mysqli_query');
+    expect(info?.object).toBeNull();
+  });
+
+  it('splits `->` method calls into object and name', () => {
+    const info = getAdapter('php').extractCallInfo(makeCallNode('$pdo->query($sql)'));
+    expect(info?.name).toBe('query');
+    expect(info?.object).toBe('$pdo');
+  });
+
+  it('splits `::` static calls into scope and name', () => {
+    const info = getAdapter('php').extractCallInfo(makeCallNode('DB::query($sql)'));
+    expect(info?.name).toBe('query');
+    expect(info?.object).toBe('DB');
+  });
+
+  it('resolves the outer argument list of chained invocations', () => {
+    const info = getAdapter('php').extractCallInfo(makeCallNode('$conn->prepare($sql)->execute()'));
+    expect(info?.name).toBe('execute');
+    expect(info?.object).toBe('$conn->prepare($sql)');
   });
 });
 

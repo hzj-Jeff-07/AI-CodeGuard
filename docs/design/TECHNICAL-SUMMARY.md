@@ -1,6 +1,6 @@
 # AI-CodeGuard 技术方案汇总
 
-> ⚠️ **状态更新（2026-07-05）**：本文正文写于 2026-04-12，其中关于 “cache 未接入 / GitHub Action 未完成 / 171 个测试 / 仅支持 JS-TS-Python” 的描述已过时。当前事实：Stage 2 磁盘缓存已接入 `scan()`、composite Action 与 CI / SARIF 上传 workflow 已交付且全绿、Go 与 Java 均已支持 5 条规则（CG-001/002/020/030/060）、默认模型为 `claude-sonnet-5`、测试为 277 个（11 个文件，另有 1 个 opt-in 真实 provider E2E 默认跳过）。以 `README.md` 与 `CHANGELOG.md` 为准，本文正文保留作历史快照。
+> ⚠️ **状态更新（2026-07-05）**：本文正文写于 2026-04-12，其中关于 “cache 未接入 / GitHub Action 未完成 / 171 个测试 / 仅支持 JS-TS-Python” 的描述已过时。当前事实：Stage 2 磁盘缓存已接入 `scan()`、composite Action 与 CI / SARIF 上传 workflow 已交付且全绿、Go 已支持 8 条规则、Java 已支持 9 条规则（CG-001/002/020/021/030/040/041(仅Java)/050/060）、PHP 已支持 6 条规则 MVP（CG-001/002/003/020/030/060）、默认模型为 `claude-sonnet-5`、测试为 329 个（11 个文件，另有 1 个 opt-in 真实 provider E2E 默认跳过）。以 `README.md` 与 `CHANGELOG.md` 为准，本文正文保留作历史快照。
 
 > 本文档汇总 **当前已实现能力、验证状态、已修正文档偏差**，并明确区分“已交付”和“后续规划”。
 
@@ -56,11 +56,14 @@
 
 ### 3.2 支持语言
 
-| 语言 | 扩展名 |
-|------|--------|
-| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` |
-| TypeScript | `.ts`, `.tsx` |
-| Python | `.py` |
+| 语言 | 扩展名 | 规则数 |
+|------|--------|--------|
+| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | 13（全部） |
+| TypeScript | `.ts`, `.tsx` | 13（全部） |
+| Python | `.py` | 13（全部） |
+| Go | `.go` | 8 |
+| Java | `.java` | 9 |
+| PHP | `.php` | 6（MVP） |
 
 ### 3.3 已实现规则
 

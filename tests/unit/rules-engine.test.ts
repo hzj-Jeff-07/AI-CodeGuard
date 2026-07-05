@@ -488,3 +488,68 @@ describe('runRules', () => {
     expect(results.length).toBe(0);
   });
 });
+
+// ── runRules: nested same-rule duplicate suppression ─────────────
+// Stage 1 has no dataflow, so a rule can independently flag both an outer
+// call and a call nested inside it (e.g. Go/Java's SQL-injection rule also
+// treats a SQL-assembling fmt.Sprintf/String.format as suspicious on its
+// own, to catch the two-step `query := fmt.Sprintf(...); db.Query(query)`
+// pattern). When that inner call is nested inline inside a matching outer
+// call, both fire on overlapping spans for the same underlying issue.
+
+describe('runRules nested-duplicate suppression', () => {
+  it('collapses inline db.Query(fmt.Sprintf(...)) in Go to a single finding', async () => {
+    const source = `package main
+func f(id string) {
+	rows, _ := db.Query(fmt.Sprintf("SELECT * FROM users WHERE id = %s", id))
+	_ = rows
+}`;
+    const tree = await parse(source, 'go');
+    const results = runRules(tree, getRules(), 'test.go');
+    expect(results.filter(r => r.ruleId === 'CG-001')).toHaveLength(1);
+  });
+
+  it('collapses inline executeQuery(String.format(...)) in Java to a single finding', async () => {
+    const source = `class T {
+  ResultSet f(Statement stmt, String id) throws Exception {
+    return stmt.executeQuery(String.format("SELECT * FROM users WHERE id = %s", id));
+  }
+}`;
+    const tree = await parse(source, 'java');
+    const results = runRules(tree, getRules(), 'test.java');
+    expect(results.filter(r => r.ruleId === 'CG-001')).toHaveLength(1);
+  });
+
+  it('still reports the two-step Sprintf-then-Query pattern (not nested, not suppressed)', async () => {
+    const source = `package main
+func f(name string) {
+	query := fmt.Sprintf("SELECT * FROM users WHERE name = '%s'", name)
+	rows, _ := db.Query(query)
+	_ = rows
+}`;
+    const tree = await parse(source, 'go');
+    const results = runRules(tree, getRules(), 'test.go');
+    expect(results.filter(r => r.ruleId === 'CG-001')).toHaveLength(1);
+  });
+
+  it('collapses a Go InsecureSkipVerify composite literal nested inside another literal', async () => {
+    const source = `package main
+func f() *http.Transport {
+	return &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+}`;
+    const tree = await parse(source, 'go');
+    const results = runRules(tree, getRules(), 'test.go');
+    expect(results.filter(r => r.ruleId === 'CG-050')).toHaveLength(1);
+  });
+
+  it('keeps two independent (non-nested) findings of the same rule', async () => {
+    const source = `package main
+func f() {
+	md5.Sum([]byte("a"))
+	sha1.New()
+}`;
+    const tree = await parse(source, 'go');
+    const results = runRules(tree, getRules(), 'test.go');
+    expect(results.filter(r => r.ruleId === 'CG-021')).toHaveLength(2);
+  });
+});

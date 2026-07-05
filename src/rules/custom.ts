@@ -12,7 +12,7 @@ export interface ValidatedCustomRules {
   sources: Record<string, string>;
 }
 
-const LANGUAGE_VALUES = ['javascript', 'typescript', 'python', 'go', 'java'] as const;
+const LANGUAGE_VALUES = ['javascript', 'typescript', 'python', 'go', 'java', 'php'] as const;
 const SEVERITY_VALUES = ['critical', 'high', 'medium', 'low'] as const;
 const CATEGORY_VALUES = ['injection', 'xss', 'auth', 'path', 'data', 'config', 'ssrf'] as const;
 const NODE_TYPE_VALUES = [
@@ -328,6 +328,14 @@ function getHasExpressions(node: ASTNode): boolean {
   if (node.type === 'template_string') {
     if (node.rawType === 'f_string') {
       return /\{[^{}]+\}/.test(node.text);
+    }
+
+    if (node.rawType === 'encapsed_string') {
+      // PHP interpolation uses bare `$var` or `{$expr}`, not `${...}`. By
+      // construction (see isTemplateNode in parser/index.ts) an
+      // encapsed_string only becomes a template_string marker once it
+      // already has an interpolation child, so this is always true here.
+      return true;
     }
 
     return node.text.includes('${');

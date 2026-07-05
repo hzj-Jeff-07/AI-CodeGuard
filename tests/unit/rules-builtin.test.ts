@@ -3,10 +3,10 @@ import { parse } from '../../src/parser/index.js';
 import { runRules, getRules } from '../../src/rules/index.js';
 import type { SuspiciousNode } from '../../src/types/index.js';
 
-async function scanCode(source: string, lang: 'javascript' | 'typescript' | 'python' | 'go' | 'java' = 'typescript'): Promise<SuspiciousNode[]> {
+async function scanCode(source: string, lang: 'javascript' | 'typescript' | 'python' | 'go' | 'java' | 'php' = 'typescript'): Promise<SuspiciousNode[]> {
   const tree = await parse(source, lang);
   const rules = getRules();
-  const extMap: Record<string, string> = { python: 'py', javascript: 'js', typescript: 'ts', go: 'go', java: 'java' };
+  const extMap: Record<string, string> = { python: 'py', javascript: 'js', typescript: 'ts', go: 'go', java: 'java', php: 'php' };
   return runRules(tree, rules, `test.${extMap[lang]}`);
 }
 
@@ -529,6 +529,67 @@ describe('CG-021: Weak Cryptography', () => {
   });
 });
 
+describe('CG-021: Weak Cryptography (Go)', () => {
+  it('detects crypto/md5 package usage', async () => {
+    const source = `package main
+func f(data []byte) [16]byte {
+	return md5.Sum(data)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects crypto/des cipher construction', async () => {
+    const source = `package main
+func f(key []byte) {
+	des.NewCipher(key)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores crypto/sha256', async () => {
+    const source = `package main
+func f(data []byte) [32]byte {
+	return sha256.Sum256(data)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
+});
+
+describe('CG-021: Weak Cryptography (Java)', () => {
+  it('detects MessageDigest.getInstance("MD5")', async () => {
+    const source = `class T {
+  MessageDigest f() throws Exception {
+    return MessageDigest.getInstance("MD5");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects Cipher.getInstance("DES")', async () => {
+    const source = `class T {
+  Cipher f() throws Exception {
+    return Cipher.getInstance("DES");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores MessageDigest.getInstance("SHA-256")', async () => {
+    const source = `class T {
+  MessageDigest f() throws Exception {
+    return MessageDigest.getInstance("SHA-256");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
+});
+
 // ── CG-030: Path Traversal ──────────────────────────────────────
 
 describe('CG-030: Path Traversal', () => {
@@ -581,6 +642,67 @@ describe('CG-040: Sensitive Data Exposure', () => {
   });
 });
 
+describe('CG-040: Sensitive Data Exposure (Go)', () => {
+  it('detects log.Printf logging a password', async () => {
+    const source = `package main
+func f(password string) {
+	log.Printf("user password: %s", password)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-040').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects logrus.Info logging a token', async () => {
+    const source = `package main
+func f(token string) {
+	logrus.Info("token=" + token)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-040').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores logging non-sensitive data', async () => {
+    const source = `package main
+func f() {
+	log.Println("server started")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-040').length).toBe(0);
+  });
+});
+
+describe('CG-040: Sensitive Data Exposure (Java)', () => {
+  it('detects logger.info logging a password', async () => {
+    const source = `class T {
+  void f(String password) {
+    logger.info("password=" + password);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-040').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects System.out.println logging a secret', async () => {
+    const source = `class T {
+  void f(String secret) {
+    System.out.println("secret: " + secret);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-040').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores logging non-sensitive data', async () => {
+    const source = `class T {
+  void f() {
+    logger.info("server started");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-040').length).toBe(0);
+  });
+});
+
 // ── CG-041: Insecure Deserialization ────────────────────────────
 
 describe('CG-041: Insecure Deserialization', () => {
@@ -596,6 +718,28 @@ describe('CG-041: Insecure Deserialization', () => {
 
   it('ignores yaml.safe_load in Python', async () => {
     const results = await scanCode('yaml.safe_load(data)', 'python');
+    expect(findByRule(results, 'CG-041').length).toBe(0);
+  });
+});
+
+describe('CG-041: Insecure Deserialization (Java)', () => {
+  it('detects ObjectInputStream#readObject', async () => {
+    const source = `class T {
+  Object f(ObjectInputStream ois) throws Exception {
+    return ois.readObject();
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-041').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores unrelated method calls', async () => {
+    const source = `class T {
+  String f(String s) {
+    return s.trim();
+  }
+}`;
+    const results = await scanCode(source, 'java');
     expect(findByRule(results, 'CG-041').length).toBe(0);
   });
 });
@@ -625,6 +769,69 @@ describe('CG-050: Security Misconfiguration', () => {
 
   it('does not match on program root node', async () => {
     const results = await scanCode('// secure: false is just a comment\nconst x = 1;');
+    expect(findByRule(results, 'CG-050').length).toBe(0);
+  });
+});
+
+describe('CG-050: Security Misconfiguration (Go)', () => {
+  it('detects InsecureSkipVerify: true', async () => {
+    const source = `package main
+func f() *tls.Config {
+	return &tls.Config{InsecureSkipVerify: true}
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-050').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a secure TLS config', async () => {
+    const source = `package main
+func f() *tls.Config {
+	return &tls.Config{InsecureSkipVerify: false}
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-050').length).toBe(0);
+  });
+});
+
+describe('CG-050: Security Misconfiguration (Java)', () => {
+  it('detects Spring csrf().disable()', async () => {
+    const source = `class T {
+  void configure(HttpSecurity http) throws Exception {
+    http.csrf().disable();
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-050').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects Spring CORS wildcard allowedOrigins', async () => {
+    const source = `class T {
+  void configure(CorsRegistry registry) {
+    registry.addMapping("/**").allowedOrigins("*");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-050').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects setSecure(false) on a cookie', async () => {
+    const source = `class T {
+  void f(Cookie cookie) {
+    cookie.setSecure(false);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-050').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a securely configured cookie', async () => {
+    const source = `class T {
+  void f(Cookie cookie) {
+    cookie.setSecure(true);
+    cookie.setHttpOnly(true);
+  }
+}`;
+    const results = await scanCode(source, 'java');
     expect(findByRule(results, 'CG-050').length).toBe(0);
   });
 });
@@ -664,6 +871,116 @@ describe('CG-060: SSRF', () => {
   it('still detects http module calls with user input', async () => {
     const results = await scanCode('http.get(req.query.url)');
     expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ── PHP MVP rules: CG-001 / CG-002 / CG-003 / CG-020 / CG-030 / CG-060 ──
+
+describe('CG-001: SQL Injection (PHP)', () => {
+  it('detects bare mysqli_query with concatenation', async () => {
+    const source = '<?php function f($conn, $id) { return mysqli_query($conn, "SELECT * FROM users WHERE id = " . $id); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects PDO->query with an interpolated string', async () => {
+    const source = '<?php function f($pdo, $id) { return $pdo->query("SELECT * FROM orders WHERE id = $id"); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects a Laravel-style DB::query static facade call', async () => {
+    const source = '<?php $rows = DB::query("SELECT * FROM users WHERE id = " . $id); ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores PDO prepare/execute placeholder usage', async () => {
+    const source = `<?php
+function f($pdo, $id) {
+  $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+  $stmt->execute([$id]);
+  return $stmt->fetchAll();
+}
+?>`;
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+
+  it('ignores unrelated function calls', async () => {
+    const source = '<?php echo query("hello " . $name); ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+});
+
+describe('CG-002: Command Injection (PHP)', () => {
+  it('detects exec with concatenation', async () => {
+    const source = '<?php function f($dir) { exec("ls -la " . $dir); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects shell_exec with concatenation', async () => {
+    const source = '<?php function f($path) { shell_exec("cat " . $path); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores static commands', async () => {
+    const source = '<?php exec("ls -la", $output); ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-002').length).toBe(0);
+  });
+});
+
+describe('CG-003: Code Injection (PHP)', () => {
+  it('detects eval with user input', async () => {
+    const source = '<?php function f($code) { eval($code); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-003').length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('CG-020: Hardcoded Credentials (PHP)', () => {
+  it('detects a literal password assignment', async () => {
+    const source = '<?php $password = "SuperSecret123!"; ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-020').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores credentials read from the environment', async () => {
+    const source = '<?php $password = getenv("DB_PASSWORD"); ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-020').length).toBe(0);
+  });
+});
+
+describe('CG-030: Path Traversal (PHP)', () => {
+  it('detects file_get_contents with concatenated path', async () => {
+    const source = '<?php function f($name) { return file_get_contents("/uploads/" . $name); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-030').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores static paths', async () => {
+    const source = '<?php function f() { return file_get_contents("/etc/app/config.yml"); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-030').length).toBe(0);
+  });
+});
+
+describe('CG-060: SSRF (PHP)', () => {
+  it('detects curl_init with concatenated URL', async () => {
+    const source = '<?php function f($host) { return curl_init("http://" . $host . "/avatar.png"); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores static URLs', async () => {
+    const source = '<?php function f() { return curl_init("https://status.example.com/health"); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-060').length).toBe(0);
   });
 });
 

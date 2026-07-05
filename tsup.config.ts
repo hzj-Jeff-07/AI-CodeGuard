@@ -29,6 +29,10 @@ const WASM_ASSETS = [
     from: require.resolve('tree-sitter-java/tree-sitter-java.wasm'),
     to: 'tree-sitter-java.wasm',
   },
+  {
+    from: require.resolve('tree-sitter-php/tree-sitter-php.wasm'),
+    to: 'tree-sitter-php.wasm',
+  },
 ];
 
 export default defineConfig({

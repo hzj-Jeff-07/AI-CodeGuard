@@ -3,13 +3,18 @@ import type { BuiltInRule, RuleCheckContext } from '../engine.js';
 
 const SENSITIVE_PATTERNS = /\b(ssn|social.?security|credit.?card|card.?number|cvv|expir|bank.?account)\b/i;
 const LOG_FUNCTIONS = ['log', 'info', 'warn', 'error', 'debug', 'trace', 'console.log', 'print', 'logging'];
+const LOG_OBJECTS_GO = ['log', 'logger', 'logrus', 'zap', 'zerolog'];
+const LOG_METHODS_GO = ['println', 'printf', 'print', 'info', 'infof', 'error', 'errorf',
+  'warn', 'warnf', 'debug', 'debugf', 'fatal', 'fatalf'];
+const LOG_OBJECTS_JAVA = ['logger', 'log', 'system.out', 'system.err'];
+const LOG_METHODS_JAVA = ['println', 'print', 'info', 'debug', 'warn', 'error', 'trace', 'fatal'];
 
 export const sensitiveDataExposure: BuiltInRule = {
   id: 'CG-040',
   name: 'Sensitive Data Exposure',
   severity: 'medium',
   category: 'data',
-  languages: ['javascript', 'typescript', 'python'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
   description: 'Detects logging or exposure of sensitive data such as passwords, tokens, or PII.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -18,8 +23,19 @@ export const sensitiveDataExposure: BuiltInRule = {
     const call = ctx.extractCallInfo(node);
     if (!call) return null;
 
-    const isLogCall = LOG_FUNCTIONS.includes(call.name) ||
-      (call.object && ['console', 'logger', 'log', 'logging'].includes(call.object));
+    let isLogCall: boolean;
+    if (ctx.language === 'go') {
+      isLogCall = call.object !== null
+        && LOG_OBJECTS_GO.some(o => call.object!.toLowerCase().includes(o))
+        && LOG_METHODS_GO.includes(call.name.toLowerCase());
+    } else if (ctx.language === 'java') {
+      isLogCall = call.object !== null
+        && LOG_OBJECTS_JAVA.some(o => call.object!.toLowerCase().includes(o))
+        && LOG_METHODS_JAVA.includes(call.name.toLowerCase());
+    } else {
+      isLogCall = LOG_FUNCTIONS.includes(call.name) ||
+        (call.object !== null && ['console', 'logger', 'log', 'logging'].includes(call.object));
+    }
     if (!isLogCall) return null;
 
     const text = call.fullExpression.toLowerCase();
@@ -52,14 +68,32 @@ export const insecureDeserialization: BuiltInRule = {
   name: 'Insecure Deserialization',
   severity: 'high',
   category: 'data',
-  languages: ['javascript', 'typescript', 'python'],
-  description: 'Detects deserialization of untrusted data (pickle, yaml.load, etc.).',
+  languages: ['javascript', 'typescript', 'python', 'java'],
+  description: 'Detects deserialization of untrusted data (pickle, yaml.load, ObjectInputStream, etc.).',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
     if (node.type !== 'function_call') return null;
 
     const call = ctx.extractCallInfo(node);
     if (!call) return null;
+
+    // Java: ObjectInputStream#readObject / XMLDecoder#readObject are the
+    // classic gadget-chain vector; the method name alone is an unambiguous
+    // signal (no unrelated Java API shares it), so no receiver check needed.
+    if (ctx.language === 'java' && call.name === 'readObject') {
+      return {
+        file: ctx.file,
+        language: ctx.language,
+        ruleId: 'CG-041',
+        ruleName: 'Insecure Deserialization',
+        node,
+        location: node.location,
+        snippet: ctx.getSnippet(node),
+        context: ctx.getContext(node, 3),
+        confidence: 0.8,
+        metadata: { method: call.name },
+      };
+    }
 
     // JS: node-serialize, serialize-javascript
     if (DESER_FUNCTIONS_JS.includes(call.name)) {

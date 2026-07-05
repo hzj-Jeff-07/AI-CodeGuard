@@ -17,13 +17,16 @@ const PATH_METHODS_JAVA = ['readAllBytes', 'readAllLines', 'readString', 'write'
   'writeString', 'newInputStream', 'newOutputStream', 'newBufferedReader',
   'newBufferedWriter', 'delete', 'deleteIfExists', 'createDirectories', 'get', 'of'];
 const PATH_OBJECTS_JAVA = ['Files', 'Paths', 'Path'];
+// PHP's file functions are global (no receiver), like Python's.
+const PATH_FUNCTIONS_PHP = ['file_get_contents', 'file_put_contents', 'fopen', 'readfile',
+  'unlink', 'copy', 'rename', 'mkdir', 'rmdir', 'is_file', 'file_exists'];
 
 export const pathTraversal: BuiltInRule = {
   id: 'CG-030',
   name: 'Path Traversal',
   severity: 'high',
   category: 'path',
-  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java', 'php'],
   description: 'Detects file operations with user-controlled paths that may allow directory traversal.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -41,6 +44,8 @@ export const pathTraversal: BuiltInRule = {
         && PATH_OBJECTS_JAVA.includes(call.object)
         && PATH_METHODS_JAVA.includes(call.name);
       if (!isConstructor && !isStaticHelper) return null;
+    } else if (ctx.language === 'php') {
+      if (call.object !== null || !PATH_FUNCTIONS_PHP.includes(call.name)) return null;
     } else {
       const fns = ctx.language === 'python' ? PATH_FUNCTIONS_PY : PATH_FUNCTIONS_JS;
       if (!fns.includes(call.name)) return null;

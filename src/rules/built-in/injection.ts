@@ -7,6 +7,12 @@ const SQL_METHODS_JAVA = ['executeQuery', 'executeUpdate', 'execute', 'prepareSt
 const SQL_OBJECTS = ['db', 'database', 'connection', 'conn', 'pool', 'client', 'knex', 'sequelize', 'prisma'];
 const SQL_OBJECTS_GO = ['db', 'database', 'conn', 'pool', 'tx', 'stmt'];
 const SQL_OBJECTS_JAVA = ['stmt', 'statement', 'conn', 'connection', 'db', 'jdbc', 'em', 'entitymanager', 'session', 'template'];
+// PHP has no receiver for its core mysqli_*/pg_* functions (globals, not
+// methods), so those are matched by name alone; OOP drivers (PDO, mysqli
+// objects, Laravel's DB facade) are matched like the other languages.
+const SQL_FUNCTIONS_PHP = ['mysqli_query', 'mysqli_real_query', 'mysqli_multi_query', 'pg_query', 'sqlite_query'];
+const SQL_METHODS_PHP = ['query', 'exec', 'prepare', 'real_query', 'multi_query'];
+const SQL_OBJECTS_PHP = ['db', 'database', 'conn', 'connection', 'pdo', 'mysqli', 'link'];
 const SQL_KEYWORDS = /\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|UNION|WHERE|FROM|JOIN)\b/i;
 
 export const sqlInjection: BuiltInRule = {
@@ -14,7 +20,7 @@ export const sqlInjection: BuiltInRule = {
   name: 'SQL Injection',
   severity: 'critical',
   category: 'injection',
-  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java', 'php'],
   description: 'Detects unparameterized SQL queries built with string concatenation, template literals, fmt.Sprintf, or String.format.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -41,6 +47,38 @@ export const sqlInjection: BuiltInRule = {
         snippet: ctx.getSnippet(node),
         context: ctx.getContext(node, 3),
         confidence: 0.7,
+        metadata: { method: call.name, object: call.object },
+      };
+    }
+
+    if (ctx.language === 'php') {
+      const isBareSqlFunction = call.object === null && SQL_FUNCTIONS_PHP.includes(call.name);
+      const isSqlMethodCall = call.object !== null
+        && SQL_METHODS_PHP.includes(call.name)
+        && SQL_OBJECTS_PHP.some(o => call.object!.toLowerCase().includes(o));
+      if (!isBareSqlFunction && !isSqlMethodCall) return null;
+
+      // Unlike the other languages, require actual concatenation/interpolation
+      // here rather than falling back to a bare SQL-keyword sniff: PDO's
+      // idiomatic `$pdo->prepare("SELECT ... WHERE id = ?")` takes the SQL
+      // string as its only argument (parameters are bound separately via a
+      // later `execute([...])` call), so keyword-sniffing a plain literal
+      // would flag the standard safe pattern on every single use.
+      const hasConcatOrTemplate = node.children.some(
+        c => c.type === 'template_string' || c.type === 'string_concat'
+      );
+      if (!hasConcatOrTemplate) return null;
+
+      return {
+        file: ctx.file,
+        language: ctx.language,
+        ruleId: 'CG-001',
+        ruleName: 'SQL Injection',
+        node,
+        location: node.location,
+        snippet: ctx.getSnippet(node),
+        context: ctx.getContext(node, 3),
+        confidence: 0.8,
         metadata: { method: call.name, object: call.object },
       };
     }
@@ -98,13 +136,17 @@ const CMD_OBJECTS_JS = ['child_process', 'cp', 'childProcess'];
 const CMD_FUNCTIONS_PY = ['system', 'popen', 'call', 'run', 'check_output', 'check_call', 'Popen'];
 const CMD_OBJECTS_PY = ['os', 'subprocess'];
 const CMD_FUNCTIONS_GO = ['Command', 'CommandContext'];
+// `exec`/`system`/`popen` are already caught below via CMD_FUNCTIONS /
+// CMD_FUNCTIONS_PY (PHP shares those names); these three have no equivalent
+// in the other languages' lists.
+const CMD_FUNCTIONS_PHP = ['shell_exec', 'passthru', 'proc_open'];
 
 export const commandInjection: BuiltInRule = {
   id: 'CG-002',
   name: 'Command Injection',
   severity: 'critical',
   category: 'injection',
-  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java', 'php'],
   description: 'Detects shell command execution with user-controlled input.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -125,8 +167,11 @@ export const commandInjection: BuiltInRule = {
       (call.name === 'exec' && call.object !== null && call.object.includes('Runtime')) ||
       call.name === 'ProcessBuilder'
     );
+    const isPhpCmd = ctx.language === 'php' &&
+      call.object === null &&
+      CMD_FUNCTIONS_PHP.includes(call.name);
 
-    if (!isJSCmd && !isPyCmd && !isGoCmd && !isJavaCmd) return null;
+    if (!isJSCmd && !isPyCmd && !isGoCmd && !isJavaCmd && !isPhpCmd) return null;
 
     const hasDynamic = node.children.some(
       c => c.type === 'template_string' || c.type === 'string_concat'
@@ -156,7 +201,7 @@ export const codeInjection: BuiltInRule = {
   name: 'Code Injection (eval)',
   severity: 'critical',
   category: 'injection',
-  languages: ['javascript', 'typescript', 'python'],
+  languages: ['javascript', 'typescript', 'python', 'php'],
   description: 'Detects use of eval() or equivalent functions with dynamic input.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {

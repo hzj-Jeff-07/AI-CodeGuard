@@ -8,7 +8,7 @@ AI-CodeGuard is currently in a **Phase 1** state, but the runtime pipeline is no
 
 What is implemented today:
 - CLI commands: `scan`, `init`, `rules` (`--list`, `validate`, `create`, `test`)
-- Local scanning for **JavaScript, TypeScript, Python, Go, and Java**
+- Local scanning for **JavaScript, TypeScript, Python, Go, Java, and PHP**
 - **13 built-in OWASP-oriented rules**
 - Optional YAML custom rule loading through `rules.custom`
 - Custom rule CLI workflow through **`rules validate/create/test`**
@@ -18,7 +18,7 @@ What is implemented today:
 - Config loading via `.codeguard.yml` / environment variables
 - Disk cache for Stage 2 LLM results (`cache.enabled`), wired into the scan pipeline
 - GitHub composite Action (`action.yml`) plus CI / SARIF-upload workflows
-- Automated validation with **277 passing tests across 11 test files** (`npm run test:run` on 2026-07-05), plus an opt-in real-provider E2E test (skipped without `CODEGUARD_E2E=1` + API key) and a CI smoke job exercising the composite Action against the fixtures
+- Automated validation with **329 passing tests across 11 test files** (`npm run test:run` on 2026-07-05), plus an opt-in real-provider E2E test (skipped without `CODEGUARD_E2E=1` + API key) and a CI smoke job exercising the composite Action against the fixtures
 
 What is **not** complete yet:
 - npm registry publish (GitHub tags exist via the release workflow, but the package is not on npm yet)
@@ -34,7 +34,7 @@ What is **not** complete yet:
 | M3 Tree-sitter parser | Done | main parser now uses Tree-sitter-backed normalized AST |
 | M4 Custom rules runtime | Done | `rules.custom` is wired into `scan()`, and `rules validate/create/test` are available |
 | M5 GitHub / CI integration | Done | composite `action.yml`, `ci.yml`, and `security-scan.yml` (SARIF upload to Code Scanning) exist and pass |
-| M6 More languages | Done | Go: 5 rules; Java: 5 rules (`CG-001`/`CG-002`/`CG-020`/`CG-030`/`CG-060`) |
+| M6 More languages | Done | Go: 8 rules; Java: 9 rules (`CG-001`/`CG-002`/`CG-020`/`CG-021`/`CG-030`/`CG-040`/`CG-041`(Java only)/`CG-050`/`CG-060`); PHP: 6 rules MVP (`CG-001`/`CG-002`/`CG-003`/`CG-020`/`CG-030`/`CG-060`) |
 
 ### Terminology
 
@@ -129,20 +129,21 @@ Defaults: Stage 1 only (no API key needed), fails the job on critical/high findi
 | JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | all 13 built-in rules |
 | TypeScript | `.ts`, `.tsx` | all 13 built-in rules |
 | Python | `.py` | all 13 built-in rules |
-| Go | `.go` | `CG-001` SQL injection, `CG-002` command injection, `CG-020` hardcoded credentials, `CG-030` path traversal, `CG-060` SSRF |
-| Java | `.java` | `CG-001` SQL injection (incl. `String.format`), `CG-002` command injection (`Runtime.exec`, `ProcessBuilder`), `CG-020` hardcoded credentials, `CG-030` path traversal (`File`/`Files`/`Paths`), `CG-060` SSRF (`URL`, RestTemplate) |
+| Go | `.go` | `CG-001` SQL injection, `CG-002` command injection, `CG-020` hardcoded credentials, `CG-021` weak crypto (`crypto/md5`/`sha1`/`des`/`rc4`), `CG-030` path traversal, `CG-040` sensitive data exposure (`log`/`logrus`/`zap`), `CG-050` security misconfiguration (`InsecureSkipVerify`), `CG-060` SSRF (8 rules) |
+| Java | `.java` | `CG-001` SQL injection (incl. `String.format`), `CG-002` command injection (`Runtime.exec`, `ProcessBuilder`), `CG-020` hardcoded credentials, `CG-021` weak crypto (`MessageDigest`/`Cipher`), `CG-030` path traversal (`File`/`Files`/`Paths`), `CG-040` sensitive data exposure, `CG-041` insecure deserialization (`ObjectInputStream#readObject`), `CG-050` security misconfiguration (Spring CSRF/CORS, cookie flags), `CG-060` SSRF (`URL`, RestTemplate) (9 rules) |
+| PHP | `.php` | `CG-001` SQL injection (`mysqli_query`, PDO/mysqli `->query`, `Class::query` facades), `CG-002` command injection (`exec`, `shell_exec`, `passthru`, `proc_open`), `CG-003` eval/code injection, `CG-020` hardcoded credentials, `CG-030` path traversal (`file_get_contents`, `fopen`, etc.), `CG-060` SSRF (`curl_init`) (6 rules, MVP) |
 
 ### Built-in Rule Set
 
 | Category | Rule IDs | Notes |
 |----------|----------|-------|
-| Injection | `CG-001`, `CG-002`, `CG-003` | SQL injection, command injection, eval/code injection; `CG-001`/`CG-002` also cover Go and Java |
+| Injection | `CG-001`, `CG-002`, `CG-003` | SQL injection, command injection, eval/code injection; `CG-001`/`CG-002` also cover Go, Java, and PHP; `CG-003` also covers PHP |
 | XSS | `CG-010`, `CG-011` | Reflected/DOM-based XSS |
-| Auth / Crypto | `CG-020`, `CG-021` | Hardcoded credentials (also Go and Java), weak cryptography |
-| Path | `CG-030`, `CG-031` | Path traversal (also Go and Java), arbitrary file read/write |
-| Data | `CG-040`, `CG-041` | Sensitive data exposure, insecure deserialization |
-| Config | `CG-050` | Security misconfiguration |
-| SSRF | `CG-060` | Server-side request forgery (also Go and Java) |
+| Auth / Crypto | `CG-020`, `CG-021` | Hardcoded credentials (also Go, Java, and PHP), weak cryptography (also Go and Java) |
+| Path | `CG-030`, `CG-031` | Path traversal (also Go, Java, and PHP), arbitrary file read/write |
+| Data | `CG-040`, `CG-041` | Sensitive data exposure (also Go and Java), insecure deserialization (also Java) |
+| Config | `CG-050` | Security misconfiguration (also Go and Java) |
+| SSRF | `CG-060` | Server-side request forgery (also Go, Java, and PHP) |
 
 Total: **13 built-in rules**.
 
@@ -194,8 +195,8 @@ Run `init` to generate a starter config:
 ```yaml
 scan:
   include:
-    - "src/**/*.{ts,js,py,go,java}"
-    - "lib/**/*.{ts,js,py,go,java}"
+    - "src/**/*.{ts,js,py,go,java,php}"
+    - "lib/**/*.{ts,js,py,go,java,php}"
   exclude:
     - "node_modules"
     - "dist"
@@ -317,7 +318,7 @@ npm run test:run
 Result:
 - build passed
 - `10` test files passed
-- `277` tests passed (plus 1 opt-in E2E skipped without an API key)
+- `329` tests passed (plus 1 opt-in E2E skipped without an API key)
 
 ## Limitations
 
@@ -326,7 +327,9 @@ Current known limitations:
 - parser uses Tree-sitter with a compatibility-preserving normalized AST layer
 - model-cost enforcement depends on a built-in pricing table; if `llm.maxCostUSD` is set for an unknown model, the scan fails fast
 - `rules test` is intentionally Stage 1-only and does not exercise Stage 2
-- Go and Java support covers 5 rules each (`CG-001`/`CG-002`/`CG-020`/`CG-030`/`CG-060`). Stage 1 has no dataflow analysis, so inline `db.Query(fmt.Sprintf(...))` / `Files.readString(Paths.get(...))` may report both the outer call and the inner call
+- Go covers 8 rules (`CG-001`/`CG-002`/`CG-020`/`CG-021`/`CG-030`/`CG-040`/`CG-050`/`CG-060`); Java covers those plus `CG-041` (9 total); PHP covers 6 as an MVP (`CG-001`/`CG-002`/`CG-003`/`CG-020`/`CG-030`/`CG-060`) — `CG-021`/`CG-040`/`CG-041`/`CG-050` aren't ported to PHP yet. `CG-010`/`CG-011` (XSS) and `CG-031` (arbitrary file access) have no Go/Java/PHP equivalent
+- PHP's `CG-001` requires actual string concatenation/interpolation rather than falling back to a bare SQL-keyword sniff, because PDO's idiomatic `$pdo->prepare("SELECT ... WHERE id = ?")` takes the query as its only argument (parameters are bound via a later `execute([...])` call) — keyword-sniffing a plain literal would flag that standard safe pattern on every use
+- Stage 1 has no dataflow analysis, so a rule can independently flag both an outer call and a call nested inside it for the same underlying issue (e.g. `db.Query(fmt.Sprintf(...))`, or a Go `tls.Config` struct literal nested inside an `http.Transport` literal). `runRules()` now suppresses same-rule findings whose location is fully contained within another finding of the same rule in the same file, keeping only the outer, more-contextual one — the separate two-step pattern (`query := fmt.Sprintf(...); db.Query(query)`), where the calls aren't nested, is unaffected and still reported
 - `config.output.format` is defined, but the scan command’s CLI default still prefers text unless `--output` is explicitly provided
 - fix suggestions are advisory only; the CLI does not rewrite files automatically
 

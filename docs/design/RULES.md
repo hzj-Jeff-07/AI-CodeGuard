@@ -14,7 +14,7 @@
 - `rules create` 负责生成最小可用 rule scaffold，支持 `--force`
 - `rules test` 复用 `scan()` 主流程，以 **Stage 1-only** 方式验证 custom rules
 - 运行方式：`scan()` 中先加载规则，再对 Tree-sitter 归一化 ASTree 执行逐节点检查
-- 支持语言：JavaScript / TypeScript / Python（全部 13 条规则）/ Go / Java（各 5 条：CG-001/002/020/030/060）
+- 支持语言：JavaScript / TypeScript / Python（全部 13 条规则）/ Go（8 条）/ Java（9 条）/ PHP（6 条：CG-001/002/003/020/030/060，详见第 9 节）
 
 当前**尚未实现**：
 
@@ -93,19 +93,19 @@ custom rules 当前也共享这一能力边界，因此它们：
 
 | 规则 ID | 名称 | 严重级别 | 语言 | 当前核心检测信号 |
 |---------|------|----------|------|------------------|
-| `CG-001` | SQL Injection | critical | JS / TS / Python / Go / Java | `query` / `execute` / `raw` / `exec` / `prepare` 等数据库调用，且参数中存在模板字符串或字符串拼接；Go 侧匹配 `db.Query/Exec/Prepare*` 的拼接或 `fmt.Sprintf` 组装，以及组装 SQL 的 `fmt.Sprintf` 本身；Java 侧匹配 `executeQuery/executeUpdate/prepareStatement` 等的拼接或 `String.format`，以及组装 SQL 的 `String.format` 本身 |
-| `CG-002` | Command Injection | critical | JS / TS / Python / Go / Java | `exec` / `spawn` / `system` / `subprocess` 等命令执行调用，且参数带动态拼接；Go 侧匹配 `exec.Command(Context)` 的字符串拼接或 `fmt.Sprintf`；Java 侧匹配 `Runtime.getRuntime().exec` / `new ProcessBuilder` 的拼接或 `String.format` |
-| `CG-003` | Code Injection (eval) | critical | JS / TS / Python | `eval` / `Function` / `setTimeout` / `setInterval` 等危险调用 |
+| `CG-001` | SQL Injection | critical | JS / TS / Python / Go / Java / PHP | `query` / `execute` / `raw` / `exec` / `prepare` 等数据库调用，且参数中存在模板字符串或字符串拼接；Go 侧匹配 `db.Query/Exec/Prepare*` 的拼接或 `fmt.Sprintf` 组装，以及组装 SQL 的 `fmt.Sprintf` 本身；Java 侧匹配 `executeQuery/executeUpdate/prepareStatement` 等的拼接或 `String.format`，以及组装 SQL 的 `String.format` 本身；PHP 侧匹配 `mysqli_query` 等裸函数与 `->query/exec/prepare`（PDO/mysqli 对象）或 `Class::query`（如 Laravel `DB::query`）等方法调用的拼接或插值字符串——要求实际拼接/插值，不靠关键字嗅探，因为 `$pdo->prepare("... WHERE id = ?")` 这种仅含占位符的字面量是 PDO 惯用安全写法 |
+| `CG-002` | Command Injection | critical | JS / TS / Python / Go / Java / PHP | `exec` / `spawn` / `system` / `subprocess` 等命令执行调用，且参数带动态拼接；Go 侧匹配 `exec.Command(Context)` 的字符串拼接或 `fmt.Sprintf`；Java 侧匹配 `Runtime.getRuntime().exec` / `new ProcessBuilder` 的拼接或 `String.format`；PHP 侧 `exec`/`system`/`popen` 与其他语言共享的函数名列表天然覆盖，另加 `shell_exec`/`passthru`/`proc_open` |
+| `CG-003` | Code Injection (eval) | critical | JS / TS / Python / PHP | `eval` / `Function` / `setTimeout` / `setInterval` 等危险调用；PHP 的 `eval()` 在 tree-sitter-php 语法中就是普通函数调用节点，复用同一份 `EVAL_FUNCTIONS` 列表即可命中 |
 | `CG-010` | Cross-Site Scripting (XSS) | high | JS / TS | `innerHTML` / `outerHTML` / `document.write` / `insertAdjacentHTML` |
 | `CG-011` | DOM-based XSS | high | JS / TS | 同一节点同时包含 DOM source 与 sink |
-| `CG-020` | Hardcoded Credentials | high | JS / TS / Python / Go / Java | `password` / `secret` / `token` / `api_key` 等敏感赋值模式；Go 侧覆盖 `:=` / `var` / `const` 字面量赋值；Java 侧覆盖字段与局部变量字面量赋值 |
-| `CG-021` | Weak Cryptography | medium | JS / TS / Python | `md5` / `sha1` / `des` / `rc4` / `md4` 等弱算法 |
-| `CG-030` | Path Traversal | high | JS / TS / Python / Go / Java | 文件路径操作 + 动态路径拼接；Go 侧匹配 `os` / `ioutil` 文件函数的拼接或 `fmt.Sprintf` 路径；Java 侧匹配 `new File/FileInputStream/...` 构造器与 `Files`/`Paths` 静态方法的拼接或 `String.format` 路径，`normalize()`/`getCanonicalPath()` + `startsWith` 视为已消毒 |
+| `CG-020` | Hardcoded Credentials | high | JS / TS / Python / Go / Java / PHP | `password` / `secret` / `token` / `api_key` 等敏感赋值模式；Go 侧覆盖 `:=` / `var` / `const` 字面量赋值；Java 侧覆盖字段与局部变量字面量赋值；PHP 的 `assignment_expression` 与 JS/TS 共用同一归一化分支，无需额外代码 |
+| `CG-021` | Weak Cryptography | medium | JS / TS / Python / Go / Java | `md5` / `sha1` / `des` / `rc4` / `md4` 等弱算法；Go 侧匹配 `crypto/md5|sha1|des|rc4` 包本身（包名即信号，不看具体方法）；Java 侧匹配 `MessageDigest`/`Cipher.getInstance(...)` 传入弱算法字符串（`sha256` 等强算法不命中） |
+| `CG-030` | Path Traversal | high | JS / TS / Python / Go / Java / PHP | 文件路径操作 + 动态路径拼接；Go 侧匹配 `os` / `ioutil` 文件函数的拼接或 `fmt.Sprintf` 路径；Java 侧匹配 `new File/FileInputStream/...` 构造器与 `Files`/`Paths` 静态方法的拼接或 `String.format` 路径，`normalize()`/`getCanonicalPath()` + `startsWith` 视为已消毒；PHP 侧匹配 `file_get_contents`/`file_put_contents`/`fopen`/`readfile` 等全局函数（PHP 无接收者，类似 Python）的拼接或插值路径 |
 | `CG-031` | Arbitrary File Read/Write | high | JS / TS / Python | `readFile` / `writeFile` / `open` 等操作直接引用 `req` / `params` / `query` / `args` |
-| `CG-040` | Sensitive Data Exposure | medium | JS / TS / Python | 日志调用中出现 `password` / `token` / `secret` / PII 模式 |
-| `CG-041` | Insecure Deserialization | high | JS / TS / Python | `deserialize` / `unserialize` / `pickle.loads` / `yaml.load` |
-| `CG-050` | Security Misconfiguration | medium | JS / TS / Python | CORS `*`、`secure: false`、`httpOnly: false`、`verify=False` 等配置模式 |
-| `CG-060` | Server-Side Request Forgery (SSRF) | high | JS / TS / Python / Go / Java | HTTP 请求 URL 来自动态拼接或明显用户输入；Go 侧匹配 `http.*` 调用的拼接或 `fmt.Sprintf` URL；Java 侧匹配 `new URL/HttpGet/HttpPost/...`、`URI.create` 与 RestTemplate 风格方法（`getForObject`/`exchange` 等）的拼接或 `String.format` URL |
+| `CG-040` | Sensitive Data Exposure | medium | JS / TS / Python / Go / Java | 日志调用中出现 `password` / `token` / `secret` / PII 模式；Go 侧匹配 `log`/`logrus`/`zap`/`zerolog` 等对象的日志方法；Java 侧匹配 `logger`/`log`/`System.out`/`System.err` 的日志方法 |
+| `CG-041` | Insecure Deserialization | high | JS / TS / Python / Java | `deserialize` / `unserialize` / `pickle.loads` / `yaml.load`；Java 侧匹配 `readObject()` 方法调用（`ObjectInputStream`/`XMLDecoder` 经典 gadget-chain 入口，方法名本身信号足够明确，无需限定接收者）；Go 无清晰对等写法，暂不覆盖 |
+| `CG-050` | Security Misconfiguration | medium | JS / TS / Python / Go / Java | CORS `*`、`secure: false`、`httpOnly: false`、`verify=False` 等配置模式；Go 侧新增 `InsecureSkipVerify: true`（`tls.Config` 结构体字面量，Stage 1 已扩展归一化层专门识别 Go `composite_literal` 节点以支持此匹配）；Java 侧新增 Spring `.csrf().disable()`、`.allowedOrigins("*")`、`setSecure(false)`、`setHttpOnly(false)` |
+| `CG-060` | Server-Side Request Forgery (SSRF) | high | JS / TS / Python / Go / Java / PHP | HTTP 请求 URL 来自动态拼接或明显用户输入；Go 侧匹配 `http.*` 调用的拼接或 `fmt.Sprintf` URL；Java 侧匹配 `new URL/HttpGet/HttpPost/...`、`URI.create` 与 RestTemplate 风格方法（`getForObject`/`exchange` 等）的拼接或 `String.format` URL；PHP 侧匹配裸函数 `curl_init`（最常见的 PHP SSRF 信号）的拼接或插值 URL |
 
 ## 6. 当前 custom rules 运行时形态
 
@@ -159,7 +159,7 @@ patterns:
 
 - `severity`: `critical` / `high` / `medium` / `low`
 - `category`: `injection` / `xss` / `auth` / `path` / `data` / `config` / `ssrf`
-- `languages`: `javascript` / `typescript` / `python`
+- `languages`: `javascript` / `typescript` / `python` / `go` / `java` / `php`
 
 ## 7. 当前支持的 pattern 子集
 
@@ -263,9 +263,9 @@ rules:
 
 当前规则系统最重要的限制有：
 
-1. **Go / Java 支持是 5 规则范围**
-   - Go 与 Java 均支持 `CG-001` / `CG-002` / `CG-020` / `CG-030` / `CG-060` 共 5 条。其余规则不在对应语言文件上运行。
-   - Stage 1 无数据流分析：`query := fmt.Sprintf(...)` 两步写法靠 “Sprintf 组装 SQL” 启发式命中；内联 `db.Query(fmt.Sprintf(...))` / `Files.readString(Paths.get(...))` 会同时报外层调用与内层调用两条。
+1. **Go / Java / PHP 覆盖范围**
+   - Go 支持 `CG-001` / `CG-002` / `CG-020` / `CG-021` / `CG-030` / `CG-040` / `CG-050` / `CG-060` 共 8 条；Java 在此基础上再加 `CG-041` 共 9 条；PHP 支持 `CG-001` / `CG-002` / `CG-003` / `CG-020` / `CG-030` / `CG-060` 共 6 条（MVP 范围，`CG-021`/`CG-040`/`CG-041`/`CG-050` 尚未移植）。`CG-010`/`CG-011`（XSS）、`CG-031`（arbitrary file access）在三种语言里都还没有清晰对等写法，暂不覆盖。
+   - Stage 1 无数据流分析：`query := fmt.Sprintf(...)` 两步写法靠 “Sprintf 组装 SQL” 启发式命中。内联嵌套时（如 `db.Query(fmt.Sprintf(...))`、嵌套的 Go struct 字面量 `tls.Config` 嵌在 `http.Transport` 里）同一条规则本会同时命中外层与内层调用；`runRules()` 现在会在同一文件内、同一 ruleId 下，抑制完全被另一条命中"包含"的内层重复项，只保留外层这条更完整的 finding——不影响真正的两步模式（Sprintf 与 Query 是两条独立语句，不构成嵌套）。
 2. **`rules test` 是 Stage 1-only smoke path**
    - 用于验证 custom rules 命中情况，不覆盖 Stage 2。
 3. **custom rules 仍受限于当前归一化 AST 能力**

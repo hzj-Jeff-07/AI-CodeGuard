@@ -28,6 +28,7 @@ async function loadTreeSitterRuntime(): Promise<TreeSitterRuntime> {
     python: await TreeSitter.Language.load(resolveGrammarWasmPath('python')),
     go: await TreeSitter.Language.load(resolveGrammarWasmPath('go')),
     java: await TreeSitter.Language.load(resolveGrammarWasmPath('java')),
+    php: await TreeSitter.Language.load(resolveGrammarWasmPath('php')),
   };
 
   return {

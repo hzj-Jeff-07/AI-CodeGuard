@@ -15,7 +15,7 @@ npm run test:run
 
 - build 通过
 - `11` 个测试文件通过（另有 1 个 opt-in E2E 文件默认跳过）
-- `277` 个测试通过 + `1` 个默认跳过
+- `329` 个测试通过 + `1` 个默认跳过
 
 这说明当前 **两级扫描基线是稳定的**。
 
@@ -105,7 +105,7 @@ tests/
 - `runRules()`
 - `loadRules()` 的 custom-rule 加载 / 目录递归 / duplicate ID / invalid YAML / invalid schema
 - preset / disable 行为
-- 去重逻辑
+- 去重逻辑（精确位置 + 同 ruleId 嵌套包含抑制）
 - language filtering
 
 ### 4.4 `tests/unit/rules-command.test.ts`
@@ -186,7 +186,8 @@ tests/
 
 当前测试除了验证“能工作”，还锁定了这些边界：
 
-- 支持语言是 JS / TS / Python / Go / Java（Go / Java 各 5 条规则）
+- 支持语言是 JS / TS / Python / Go / Java / PHP（Go 8 条规则，Java 9 条规则，PHP 6 条规则 MVP）
+- 同一 ruleId 下，内联嵌套的重复命中（如 `db.Query(fmt.Sprintf(...))`）只保留外层一条；不构成嵌套的两步模式（`query := fmt.Sprintf(...); db.Query(query)`）不受影响
 - 当前扫描结果路径应是相对路径
 - CLI / JSON / SARIF 报告的工具版本来自 `src/version.ts` 单一常量，且有测试强制它与 `package.json` 一致
 - 当前 SARIF version 是 `2.1.0`
