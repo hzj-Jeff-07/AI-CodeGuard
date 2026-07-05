@@ -119,11 +119,14 @@ source code
 | JavaScript | `javascriptAdapter` |
 | TypeScript | `typescriptAdapter` |
 | Python | `pythonAdapter` |
+| Go | `goAdapter` |
+| Java | `javaAdapter` |
+| PHP | `phpAdapter` |
 
 ### 3.4 当前限制
 
 当前 parser 仍然不提供：
-- Java / Go / Rust 解析
+- Rust / C++ 等其余语言解析
 - 跨文件语义分析
 - 污点传播或 CFG
 - 直接向规则层暴露 Tree-sitter 原生节点

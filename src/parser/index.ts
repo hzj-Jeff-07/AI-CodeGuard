@@ -4,6 +4,7 @@ import { javascriptAdapter, typescriptAdapter } from './languages/javascript.js'
 import { pythonAdapter } from './languages/python.js';
 import { goAdapter } from './languages/go.js';
 import { javaAdapter } from './languages/java.js';
+import { phpAdapter } from './languages/php.js';
 import { getTreeSitterRuntime } from './tree-sitter/runtime.js';
 
 const ADAPTERS: Record<Language, LanguageAdapter> = {
@@ -12,6 +13,7 @@ const ADAPTERS: Record<Language, LanguageAdapter> = {
   python: pythonAdapter,
   go: goAdapter,
   java: javaAdapter,
+  php: phpAdapter,
 };
 
 const EXTENSION_MAP: Record<string, Language> = {
@@ -24,6 +26,7 @@ const EXTENSION_MAP: Record<string, Language> = {
   '.py': 'python',
   '.go': 'go',
   '.java': 'java',
+  '.php': 'php',
 };
 
 // `:?=` also matches Go's short variable declaration (password := "...")
@@ -139,6 +142,14 @@ function isCallNode(node: TreeSitterNode, language: Language): boolean {
     return node.type === 'method_invocation' || node.type === 'object_creation_expression';
   }
 
+  if (language === 'php') {
+    return node.type === 'function_call_expression'
+      || node.type === 'member_call_expression'
+      || node.type === 'nullsafe_member_call_expression'
+      || node.type === 'scoped_call_expression'
+      || node.type === 'object_creation_expression';
+  }
+
   return node.type === 'call_expression' || node.type === 'new_expression';
 }
 
@@ -147,12 +158,25 @@ function isTemplateNode(node: TreeSitterNode, language: Language): boolean {
     return node.type === 'f_string' || (node.type === 'string' && node.descendantsOfType('interpolation').length > 0);
   }
 
+  if (language === 'php') {
+    // Every double-quoted PHP string parses as `encapsed_string`, even
+    // without interpolation — only flag it as dynamic when it actually
+    // has a non-text child (a `$var` or `{$expr}` interpolation).
+    return node.type === 'encapsed_string'
+      && node.namedChildren.some(child => child.type !== 'string_content');
+  }
+
   return node.type === 'template_string' || node.type === 'template_literal';
 }
 
 function isStringConcatNode(node: TreeSitterNode, language: Language): boolean {
   if (language === 'python') {
     return node.type === 'binary_operator' && node.text.includes('+') && hasStringLikeDescendant(node, language);
+  }
+
+  // PHP's concatenation operator is `.`, not `+`.
+  if (language === 'php') {
+    return node.type === 'binary_expression' && node.text.includes('.') && hasStringLikeDescendant(node, language);
   }
 
   return node.type === 'binary_expression' && node.text.includes('+') && hasStringLikeDescendant(node, language);
@@ -177,6 +201,10 @@ function isStringLiteralLikeNode(node: TreeSitterNode, language: Language): bool
 
   if (language === 'java') {
     return node.type === 'string_literal';
+  }
+
+  if (language === 'php') {
+    return node.type === 'string' || node.type === 'encapsed_string';
   }
 
   return node.type === 'string' || node.type === 'template_string' || node.type === 'template_literal';

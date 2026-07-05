@@ -125,6 +125,6 @@ permissions:
 
 ## Limitations
 
-- Currently supports JavaScript / TypeScript / Python (Go / Java planned).
+- Supports JavaScript / TypeScript / Python (all 13 built-in rules), Go (8 rules), Java (9 rules), and PHP (6 rules, MVP).
 - Linux runner is the primary target. Windows / macOS may work but are not yet tested.
 - For private repos, ensure `security-events: write` is granted at the workflow level.

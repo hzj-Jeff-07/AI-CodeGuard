@@ -3,10 +3,10 @@ import { parse } from '../../src/parser/index.js';
 import { runRules, getRules } from '../../src/rules/index.js';
 import type { SuspiciousNode } from '../../src/types/index.js';
 
-async function scanCode(source: string, lang: 'javascript' | 'typescript' | 'python' | 'go' | 'java' = 'typescript'): Promise<SuspiciousNode[]> {
+async function scanCode(source: string, lang: 'javascript' | 'typescript' | 'python' | 'go' | 'java' | 'php' = 'typescript'): Promise<SuspiciousNode[]> {
   const tree = await parse(source, lang);
   const rules = getRules();
-  const extMap: Record<string, string> = { python: 'py', javascript: 'js', typescript: 'ts', go: 'go', java: 'java' };
+  const extMap: Record<string, string> = { python: 'py', javascript: 'js', typescript: 'ts', go: 'go', java: 'java', php: 'php' };
   return runRules(tree, rules, `test.${extMap[lang]}`);
 }
 
@@ -871,6 +871,116 @@ describe('CG-060: SSRF', () => {
   it('still detects http module calls with user input', async () => {
     const results = await scanCode('http.get(req.query.url)');
     expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ── PHP MVP rules: CG-001 / CG-002 / CG-003 / CG-020 / CG-030 / CG-060 ──
+
+describe('CG-001: SQL Injection (PHP)', () => {
+  it('detects bare mysqli_query with concatenation', async () => {
+    const source = '<?php function f($conn, $id) { return mysqli_query($conn, "SELECT * FROM users WHERE id = " . $id); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects PDO->query with an interpolated string', async () => {
+    const source = '<?php function f($pdo, $id) { return $pdo->query("SELECT * FROM orders WHERE id = $id"); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects a Laravel-style DB::query static facade call', async () => {
+    const source = '<?php $rows = DB::query("SELECT * FROM users WHERE id = " . $id); ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores PDO prepare/execute placeholder usage', async () => {
+    const source = `<?php
+function f($pdo, $id) {
+  $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+  $stmt->execute([$id]);
+  return $stmt->fetchAll();
+}
+?>`;
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+
+  it('ignores unrelated function calls', async () => {
+    const source = '<?php echo query("hello " . $name); ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+});
+
+describe('CG-002: Command Injection (PHP)', () => {
+  it('detects exec with concatenation', async () => {
+    const source = '<?php function f($dir) { exec("ls -la " . $dir); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects shell_exec with concatenation', async () => {
+    const source = '<?php function f($path) { shell_exec("cat " . $path); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores static commands', async () => {
+    const source = '<?php exec("ls -la", $output); ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-002').length).toBe(0);
+  });
+});
+
+describe('CG-003: Code Injection (PHP)', () => {
+  it('detects eval with user input', async () => {
+    const source = '<?php function f($code) { eval($code); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-003').length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('CG-020: Hardcoded Credentials (PHP)', () => {
+  it('detects a literal password assignment', async () => {
+    const source = '<?php $password = "SuperSecret123!"; ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-020').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores credentials read from the environment', async () => {
+    const source = '<?php $password = getenv("DB_PASSWORD"); ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-020').length).toBe(0);
+  });
+});
+
+describe('CG-030: Path Traversal (PHP)', () => {
+  it('detects file_get_contents with concatenated path', async () => {
+    const source = '<?php function f($name) { return file_get_contents("/uploads/" . $name); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-030').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores static paths', async () => {
+    const source = '<?php function f() { return file_get_contents("/etc/app/config.yml"); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-030').length).toBe(0);
+  });
+});
+
+describe('CG-060: SSRF (PHP)', () => {
+  it('detects curl_init with concatenated URL', async () => {
+    const source = '<?php function f($host) { return curl_init("http://" . $host . "/avatar.png"); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores static URLs', async () => {
+    const source = '<?php function f() { return curl_init("https://status.example.com/health"); } ?>';
+    const results = await scanCode(source, 'php');
+    expect(findByRule(results, 'CG-060').length).toBe(0);
   });
 });
 

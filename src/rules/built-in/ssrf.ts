@@ -4,7 +4,7 @@ import type { BuiltInRule, RuleCheckContext } from '../engine.js';
 // Functions that make HTTP requests when called without a receiver object.
 // Bare verbs like `get`/`post` are intentionally excluded: they match Express
 // route registrations (`app.get`, `router.post`) and produce false positives.
-const STANDALONE_HTTP_FUNCTIONS = ['fetch', 'axios', 'request', 'urlopen'];
+const STANDALONE_HTTP_FUNCTIONS = ['fetch', 'axios', 'request', 'urlopen', 'curl_init'];
 const HTTP_MODULES = ['axios', 'fetch', 'http', 'https', 'request', 'got', 'node-fetch', 'urllib', 'requests', 'httpx'];
 // Java is gated on its own allowlists: constructors (`new URL(...)`, Apache
 // HttpClient request objects) plus RestTemplate/WebClient-style method names,
@@ -17,7 +17,7 @@ export const ssrf: BuiltInRule = {
   name: 'Server-Side Request Forgery (SSRF)',
   severity: 'high',
   category: 'ssrf',
-  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java', 'php'],
   description: 'Detects HTTP requests where the URL is constructed from user input.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {

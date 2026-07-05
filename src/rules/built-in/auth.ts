@@ -9,7 +9,7 @@ export const hardcodedCredentials: BuiltInRule = {
   name: 'Hardcoded Credentials',
   severity: 'high',
   category: 'auth',
-  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java', 'php'],
   description: 'Detects hardcoded passwords, API keys, and secrets in source code.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {

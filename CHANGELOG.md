@@ -13,11 +13,23 @@ All notable changes to AI-CodeGuard are documented here. The format follows [Kee
   - `CG-050` Security Misconfiguration — Go: `tls.Config{InsecureSkipVerify: true}`; Java: Spring `.csrf().disable()`, `.allowedOrigins("*")`, `setSecure(false)`, `setHttpOnly(false)`
   - Parser-level addition: Go `composite_literal` nodes (struct literals like `&tls.Config{...}`) are now normalized into the AST so text-pattern rules like `CG-050` can see them — previously only call/template/concat/credential nodes were reachable, so a misconfiguration expressed as a struct literal (not wrapped in a function call) was invisible to Stage 1
   - 20 new tests across the four rules
+- **PHP language support (MVP, 6th language)**: `tree-sitter-php` grammar bundled (`dist/tree-sitter/tree-sitter-php.wasm`), `.php` detection, a new `phpAdapter` (splits `->`/`::` receivers from callees, resolves the outer call of chained invocations the same way the Java adapter does), and 6 rules:
+  - `CG-001` SQL Injection — bare `mysqli_query`/`pg_query`/etc., or `->query/exec/prepare` (PDO/mysqli objects) and `Class::query` (e.g. Laravel's `DB::query`) with concatenated or interpolated SQL. Unlike the other languages this requires actual concatenation/interpolation rather than a bare SQL-keyword sniff — PDO's idiomatic `$pdo->prepare("SELECT ... WHERE id = ?")` takes the query as its only argument (parameters bind via a later `execute([...])`), so keyword-sniffing a plain literal would flag that standard safe pattern on every use
+  - `CG-002` Command Injection — `exec`/`system`/`popen` (already caught by the existing cross-language function lists) plus PHP-specific `shell_exec`/`passthru`/`proc_open`
+  - `CG-003` Code Injection (eval) — PHP's `eval()` parses as an ordinary function call in the grammar, so it's covered by the existing `EVAL_FUNCTIONS` list with no new code
+  - `CG-020` Hardcoded Credentials — PHP's `assignment_expression` is picked up by the same normalization branch already used for JS/TS, no PHP-specific code needed
+  - `CG-030` Path Traversal — global file functions (`file_get_contents`, `file_put_contents`, `fopen`, `readfile`, `unlink`, `copy`, `rename`, `mkdir`, `rmdir`, `is_file`, `file_exists`) with concatenated or interpolated paths
+  - `CG-060` SSRF — `curl_init`, the most common real-world PHP SSRF vector, with a concatenated or interpolated URL
+  - Parser-level notes: every double-quoted PHP string parses as `encapsed_string` regardless of whether it interpolates a variable — only ones with an actual interpolation child are treated as dynamic (`template_string`), so a plain literal like `"SuperSecret123!"` isn't mistaken for dynamic content; PHP's concatenation operator is `.`, not `+`
+  - `.php` added to the default `scan.include` glob and the `init` config template
+  - 27 new tests (rule units, parser precision, `phpAdapter` unit tests) plus vulnerable/safe PHP fixtures (`injection.php` / `secure-code.php`)
 
 ### Fixed
 
 - **Nested same-rule duplicate findings** — Stage 1's lack of dataflow analysis meant a rule could independently fire on both an outer call and a call nested inside it for the same underlying issue (e.g. `db.Query(fmt.Sprintf(...))` reported the `db.Query` call and the `fmt.Sprintf` call as two separate `CG-001` findings; nesting a Go `tls.Config` literal inside an `http.Transport` literal double-reported `CG-050`). `runRules()` now suppresses a finding when its location is fully contained within another finding of the same rule in the same file, keeping only the outer, more-contextual one. The genuinely separate two-step pattern (`query := fmt.Sprintf(...); db.Query(query)`, not nested) is unaffected and still reported once.
-- 5 new tests covering the suppression and confirming the two-step pattern still reports; suite now at 302 tests (+1 opt-in skip)
+- 5 new tests covering the suppression and confirming the two-step pattern still reports
+
+Suite now at 329 tests (+1 opt-in skip).
 
 ## [0.3.0] — 2026-07-05
 

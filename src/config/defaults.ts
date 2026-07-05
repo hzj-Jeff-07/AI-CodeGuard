@@ -2,7 +2,7 @@ import type { CodeGuardConfig } from '../types/index.js';
 
 export const DEFAULT_CONFIG: CodeGuardConfig = {
   scan: {
-    include: ['**/*.{ts,js,py,go,java}'],
+    include: ['**/*.{ts,js,py,go,java,php}'],
     exclude: ['node_modules', '**/*.test.*', '**/*.spec.*', 'dist', 'build'],
   },
   rules: {
