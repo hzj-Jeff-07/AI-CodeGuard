@@ -1,4 +1,5 @@
 import type { LanguageAdapter, StandardNodeType, ASTNode, CallInfo } from '../../types/index.js';
+import { findOuterArgumentsStart } from './shared.js';
 
 const NODE_TYPE_MAP: Record<string, StandardNodeType> = {
   'method_invocation': 'function_call',
@@ -49,22 +50,3 @@ export const javaAdapter: LanguageAdapter = {
     };
   },
 };
-
-// Chained calls like Runtime.getRuntime().exec(...) mean the first '(' is not
-// the outer call's argument list. Match the trailing ')' backwards instead.
-function findOuterArgumentsStart(text: string): number {
-  if (!text.endsWith(')')) {
-    return text.indexOf('(');
-  }
-
-  let depth = 0;
-  for (let i = text.length - 1; i >= 0; i--) {
-    const ch = text[i];
-    if (ch === ')') depth += 1;
-    else if (ch === '(') {
-      depth -= 1;
-      if (depth === 0) return i;
-    }
-  }
-  return text.indexOf('(');
-}

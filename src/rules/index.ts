@@ -81,11 +81,32 @@ export function runRules(
 // the same rule fires on a span fully contained within another of its own
 // matches in the same file, keep only the outer, more-contextual finding.
 function suppressNestedDuplicates(results: SuspiciousNode[]): SuspiciousNode[] {
-  return results.filter(candidate => !results.some(other =>
-    other !== candidate
-    && other.ruleId === candidate.ruleId
-    && strictlyContains(other.location, candidate.location)
-  ));
+  // Containment can only ever apply within the same rule, so group first —
+  // this keeps the O(n²) containment scan scoped to each rule's own (small)
+  // bucket of findings instead of the full result set for the file.
+  const byRuleId = new Map<string, SuspiciousNode[]>();
+  for (const result of results) {
+    const bucket = byRuleId.get(result.ruleId);
+    if (bucket) {
+      bucket.push(result);
+    } else {
+      byRuleId.set(result.ruleId, [result]);
+    }
+  }
+
+  const suppressed = new Set<SuspiciousNode>();
+  for (const bucket of byRuleId.values()) {
+    for (const candidate of bucket) {
+      const isNested = bucket.some(other =>
+        other !== candidate && strictlyContains(other.location, candidate.location)
+      );
+      if (isNested) {
+        suppressed.add(candidate);
+      }
+    }
+  }
+
+  return results.filter(result => !suppressed.has(result));
 }
 
 function strictlyContains(outer: SourceLocation, inner: SourceLocation): boolean {
