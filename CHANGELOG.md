@@ -12,7 +12,13 @@ All notable changes to AI-CodeGuard are documented here. The format follows [Kee
   - `CG-060` SSRF — `new URL/HttpGet/HttpPost/...`, `URI.create`, and RestTemplate-style calls (`getForObject`, `exchange`, …) with concatenated or `String.format`-built URLs
 - 11 new tests (Java stretch-rule units + vulnerable/safe Java fixtures `Stretch.java` / `SecureStretch.java`)
 - **Cost/model boundary tests** pinning the built-in pricing table (sonnet 3/15, opus 15/75, haiku 0.8/4, `gpt-4o-mini` matched before `gpt-4o`), unknown-model behavior (fail-fast with `llm.maxCostUSD`, zero-cost analysis without it), and budget-overshoot semantics under concurrency (in-flight calls finish and are honestly billed; no new calls start)
-- **Opt-in real-provider acceptance test** (`tests/integration/llm-provider.test.ts`): runs `analyzeFindings` against the real Claude API when `CODEGUARD_E2E=1` and `ANTHROPIC_API_KEY` are set (defaults to Haiku); skipped otherwise so default regression stays offline — suite now at 247 tests (+1 opt-in skip)
+- **Opt-in real-provider acceptance test** (`tests/integration/llm-provider.test.ts`): runs `analyzeFindings` against the real Claude API when `CODEGUARD_E2E=1` and `ANTHROPIC_API_KEY` are set (defaults to Haiku); skipped otherwise so default regression stays offline
+- **CI smoke test for the composite Action** (`action-smoke` job in `ci.yml`): runs the local `action.yml` against the vulnerable fixtures (asserts `findings-count > 0` and valid SARIF: version 2.1.0, driver name/version, results present) and the safe fixtures (asserts zero findings with `fail-on-findings: true` passing)
+- `src/version.ts` as the single source for the version reported by `--version`, the JSON reporter, and the SARIF `tool.driver.version`, guarded by a test that fails when it drifts from `package.json` — suite now at 248 tests (+1 opt-in skip)
+
+### Fixed
+
+- SARIF `informationUri` and the `init` config template pointed at the placeholder `github.com/user/ai-codeguard`; both now reference the real repository URL
 
 ## [0.2.0] — 2026-07-04
 

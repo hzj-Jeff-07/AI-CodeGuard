@@ -18,7 +18,7 @@ What is implemented today:
 - Config loading via `.codeguard.yml` / environment variables
 - Disk cache for Stage 2 LLM results (`cache.enabled`), wired into the scan pipeline
 - GitHub composite Action (`action.yml`) plus CI / SARIF-upload workflows
-- Automated validation with **247 passing tests across 10 test files** (`npm run test:run` on 2026-07-05), plus an opt-in real-provider E2E test (skipped without `CODEGUARD_E2E=1` + API key)
+- Automated validation with **248 passing tests across 11 test files** (`npm run test:run` on 2026-07-05), plus an opt-in real-provider E2E test (skipped without `CODEGUARD_E2E=1` + API key) and a CI smoke job exercising the composite Action against the fixtures
 
 What is **not** complete yet:
 - npm registry publish (`v0.2.0` is tagged on GitHub, but the package is not on npm yet)
@@ -316,7 +316,7 @@ npm run test:run
 Result:
 - build passed
 - `10` test files passed
-- `247` tests passed (plus 1 opt-in E2E skipped without an API key)
+- `248` tests passed (plus 1 opt-in E2E skipped without an API key)
 
 ## Limitations
 

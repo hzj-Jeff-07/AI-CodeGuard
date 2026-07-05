@@ -175,8 +175,8 @@ jobs:
 在真正落地这一步前，需要先接受当前边界：
 
 - SARIF 已能导出
-- 但当前仓库还没有现成上传工作流
-- `informationUri` 仍是占位式链接
+- 上传工作流已存在（`security-scan.yml`）
+- `informationUri` 已指向真实仓库
 
 因此更合理的顺序仍然是：
 

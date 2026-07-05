@@ -14,8 +14,8 @@ npm run test:run
 结果：
 
 - build 通过
-- `10` 个测试文件通过（另有 1 个 opt-in E2E 文件默认跳过）
-- `247` 个测试通过 + `1` 个默认跳过
+- `11` 个测试文件通过（另有 1 个 opt-in E2E 文件默认跳过）
+- `248` 个测试通过 + `1` 个默认跳过
 
 这说明当前 **两级扫描基线是稳定的**。
 
@@ -57,7 +57,8 @@ tests/
     ├── reporter.test.ts
     ├── rules-builtin.test.ts
     ├── rules-command.test.ts
-    └── rules-engine.test.ts
+    ├── rules-engine.test.ts
+    └── version.test.ts        # VERSION 常量与 package.json 对齐守护
 ```
 
 这意味着当前测试结构非常清晰：
@@ -187,7 +188,7 @@ tests/
 
 - 支持语言是 JS / TS / Python / Go / Java（Go / Java 各 5 条规则）
 - 当前扫描结果路径应是相对路径
-- 当前 reporter version 是 `0.1.0`
+- CLI / JSON / SARIF 报告的工具版本来自 `src/version.ts` 单一常量，且有测试强制它与 `package.json` 一致
 - 当前 SARIF version 是 `2.1.0`
 - `--dry-run` 会停在 Stage 1
 - Stage 2 通过依赖注入可避免真实外网调用
@@ -216,8 +217,7 @@ CODEGUARD_E2E=1 ANTHROPIC_API_KEY=sk-... npx vitest run tests/integration/llm-pr
 
 下面这些仍然是当前测试体系的空白或弱覆盖区：
 
-1. **没有 GitHub Action / CI 集成测试**
-   - composite Action 已交付，但没有针对 Action 本身的自动化测试。
+1. ~~没有 GitHub Action / CI 集成测试~~ ✅ `ci.yml` 现有 `action-smoke` job：用本地 composite action 扫描 vulnerable / safe fixtures，断言 findings 数、SARIF 结构与退出码
 2. **没有性能基准测试**
    - 当前测试重心是正确性，不是吞吐或耗时基准。
 3. **没有跨平台端到端 CLI 冒烟矩阵**
@@ -265,7 +265,7 @@ node dist/index.js scan ./src --output sarif
 2. ~~为 pricing / unknown-model / budget overshoot 行为补更多测试~~ ✅ 已完成（analyzer.test.ts）
 3. **为 Tree-sitter 归一化 AST 继续补精度与兼容性测试**
 4. **补 custom rules 的加载 / 校验 / 失败路径 / 集成扫描测试**
-5. **GitHub Action 上线后，新增最小 CI 集成测试**
+5. ~~GitHub Action 上线后，新增最小 CI 集成测试~~ ✅ 已完成（`ci.yml` 的 `action-smoke` job）
 
 ## 11. 结论
 

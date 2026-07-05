@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const DEFAULT_CONFIG = `# AI-CodeGuard Configuration
-# See: https://github.com/user/ai-codeguard
+# See: https://github.com/hzj-Jeff-07/AI-CodeGuard
 
 scan:
   include:
