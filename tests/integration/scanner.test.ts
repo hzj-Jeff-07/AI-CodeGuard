@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { scan } from '../../src/scanner/orchestrator.js';
 import { DEFAULT_CONFIG } from '../../src/config/defaults.js';
+import { VERSION } from '../../src/version.js';
 import type { AnalyzeFindingsDependencies } from '../../src/analyzer/index.js';
 import type { ScanOptions } from '../../src/scanner/orchestrator.js';
 import type { LLMConfig } from '../../src/types/index.js';
@@ -129,7 +130,7 @@ describe('Scanner orchestrator', () => {
       await scan(options);
       const content = await fs.readFile(outputFile, 'utf-8');
       const parsed = JSON.parse(content);
-      expect(parsed.version).toBe('0.2.0');
+      expect(parsed.version).toBe(VERSION);
       expect(parsed.findings.length).toBeGreaterThan(0);
     } finally {
       await fs.unlink(outputFile).catch(() => {});

@@ -21,7 +21,8 @@ What is implemented today:
 - Automated validation with **277 passing tests across 11 test files** (`npm run test:run` on 2026-07-05), plus an opt-in real-provider E2E test (skipped without `CODEGUARD_E2E=1` + API key) and a CI smoke job exercising the composite Action against the fixtures
 
 What is **not** complete yet:
-- npm registry publish (`v0.2.0` is tagged on GitHub, but the package is not on npm yet)
+- npm registry publish (GitHub tags exist via the release workflow, but the package is not on npm yet)
+- `v0.3.0` tag — code and CHANGELOG are release-ready; trigger the manual `release` workflow with tag `v0.3.0` after merging to `main`
 
 ### Completion Snapshot
 
