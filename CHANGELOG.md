@@ -10,7 +10,9 @@ All notable changes to AI-CodeGuard are documented here. The format follows [Kee
   - `CG-020` Hardcoded Credentials — field and local-variable literal assignments (`String password = "..."`); values read from `System.getenv` are not flagged
   - `CG-030` Path Traversal — `new File/FileInputStream/FileOutputStream/FileReader/FileWriter/RandomAccessFile` constructors and `Files`/`Paths` static helpers with concatenated or `String.format`-built paths; `normalize()`/`getCanonicalPath()` + `startsWith` in surrounding context is treated as sanitized
   - `CG-060` SSRF — `new URL/HttpGet/HttpPost/...`, `URI.create`, and RestTemplate-style calls (`getForObject`, `exchange`, …) with concatenated or `String.format`-built URLs
-- 11 new tests (Java stretch-rule units + vulnerable/safe Java fixtures `Stretch.java` / `SecureStretch.java`); suite now at 236 tests
+- 11 new tests (Java stretch-rule units + vulnerable/safe Java fixtures `Stretch.java` / `SecureStretch.java`)
+- **Cost/model boundary tests** pinning the built-in pricing table (sonnet 3/15, opus 15/75, haiku 0.8/4, `gpt-4o-mini` matched before `gpt-4o`), unknown-model behavior (fail-fast with `llm.maxCostUSD`, zero-cost analysis without it), and budget-overshoot semantics under concurrency (in-flight calls finish and are honestly billed; no new calls start)
+- **Opt-in real-provider acceptance test** (`tests/integration/llm-provider.test.ts`): runs `analyzeFindings` against the real Claude API when `CODEGUARD_E2E=1` and `ANTHROPIC_API_KEY` are set (defaults to Haiku); skipped otherwise so default regression stays offline — suite now at 247 tests (+1 opt-in skip)
 
 ## [0.2.0] — 2026-07-04
 

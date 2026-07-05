@@ -4,7 +4,7 @@
 
 ## 1. 当前测试状态
 
-截至 **2026-04-12**，当前项目测试结果为：
+截至 **2026-07-05**，当前项目测试结果为：
 
 ```bash
 npm run build
@@ -14,8 +14,8 @@ npm run test:run
 结果：
 
 - build 通过
-- `9` 个测试文件通过
-- `171` 个测试通过
+- `10` 个测试文件通过（另有 1 个 opt-in E2E 文件默认跳过）
+- `247` 个测试通过 + `1` 个默认跳过
 
 这说明当前 **两级扫描基线是稳定的**。
 
@@ -46,10 +46,12 @@ npm run test:run
 tests/
 ├── fixtures/
 ├── integration/
+│   ├── llm-provider.test.ts   # opt-in 真实 provider 验收（默认跳过）
 │   ├── rules-command.test.ts
 │   └── scanner.test.ts
 └── unit/
     ├── analyzer.test.ts
+    ├── cache.test.ts
     ├── config.test.ts
     ├── parser.test.ts
     ├── reporter.test.ts
@@ -183,30 +185,45 @@ tests/
 
 当前测试除了验证“能工作”，还锁定了这些边界：
 
-- 支持语言就是 JS / TS / Python
+- 支持语言是 JS / TS / Python / Go / Java（Go / Java 各 5 条规则）
 - 当前扫描结果路径应是相对路径
 - 当前 reporter version 是 `0.1.0`
 - 当前 SARIF version 是 `2.1.0`
 - `--dry-run` 会停在 Stage 1
 - Stage 2 通过依赖注入可避免真实外网调用
+- pricing 表已被校准测试钉住：sonnet 3/15、opus 15/75、haiku 0.8/4、`gpt-4o-mini` 优先于 `gpt-4o` 匹配；改价或改 pattern 必须同步改测试
+- unknown model：设置 `llm.maxCostUSD` 时 fail fast（含跨 provider 模型名的情况）；未设预算时可继续分析但 `estimatedCost = 0`
+- budget overshoot：并发在途调用会完整结束并如实计入超支成本，之后不再发起新调用；串行时最多超出一次调用
 - 达到预算后，剩余未分析项保留为 Stage 1 findings
+- 缓存命中不计费、不调 LLM，且 confirmed / dismissed 判定可从缓存回放
+
+## 7.1 真实 Provider 的受控验收路径（opt-in E2E）
+
+`tests/integration/llm-provider.test.ts` 提供一条**默认跳过**的真实 Claude provider 验收测试：
+用一个明显的 SQL 注入 snippet 走完整 `analyzeFindings` 流程，断言 `llmCalls = 1`、
+`estimatedCost > 0`、finding 被 confirmed 且带非空 reasoning。
+
+运行方式（需要真实 API key，产生一次极小额调用，默认用 Haiku）：
+
+```bash
+CODEGUARD_E2E=1 ANTHROPIC_API_KEY=sk-... npx vitest run tests/integration/llm-provider.test.ts
+```
+
+可用 `CODEGUARD_E2E_MODEL` 覆盖模型。未设置 `CODEGUARD_E2E=1` 或缺少 key 时，
+该文件在 `npm run test:run` 中显示为 skipped，CI 不需要任何密钥。
 
 ## 8. 当前未覆盖或覆盖较弱的地方
 
 下面这些仍然是当前测试体系的空白或弱覆盖区：
 
-1. **没有真实外部 Provider 的端到端验收测试**
-   - 当前 Stage 2 测试通过依赖注入隔离网络调用。
-2. **没有 pricing table 的独立校准测试**
-   - 目前主要通过行为测试覆盖预算截断分支。
-3. **没有 cache 行为测试**
-   - 因为当前扫描主流程未使用 cache。
-4. **没有 GitHub Action / CI 集成测试**
-   - 因为仓库没有对应产品化链路。
-5. **没有性能基准测试**
+1. **没有 GitHub Action / CI 集成测试**
+   - composite Action 已交付，但没有针对 Action 本身的自动化测试。
+2. **没有性能基准测试**
    - 当前测试重心是正确性，不是吞吐或耗时基准。
-6. **没有跨平台端到端 CLI 冒烟矩阵**
+3. **没有跨平台端到端 CLI 冒烟矩阵**
    - 当前主要确认了 Windows 路径兼容与基础行为。
+4. **真实 provider 验收是 opt-in，不在默认回归里**
+   - 需要手动带 key 执行（见 7.1）。
 
 ## 9. 当前最推荐的验证命令
 
@@ -244,8 +261,8 @@ node dist/index.js scan ./src --output sarif
 
 如果下一阶段继续开发，测试体系应按以下顺序补强：
 
-1. **补真实 provider 的受控验收路径**
-2. **为 pricing / unknown-model / budget overshoot 行为补更多测试**
+1. ~~补真实 provider 的受控验收路径~~ ✅ 已完成（见 7.1，opt-in E2E）
+2. ~~为 pricing / unknown-model / budget overshoot 行为补更多测试~~ ✅ 已完成（analyzer.test.ts）
 3. **为 Tree-sitter 归一化 AST 继续补精度与兼容性测试**
 4. **补 custom rules 的加载 / 校验 / 失败路径 / 集成扫描测试**
 5. **GitHub Action 上线后，新增最小 CI 集成测试**
