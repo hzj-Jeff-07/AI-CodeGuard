@@ -22,7 +22,7 @@ What is implemented today:
 
 What is **not** complete yet:
 - npm registry publish (GitHub tags exist via the release workflow, but the package is not on npm yet)
-- `v0.3.0` tag — code and CHANGELOG are release-ready; trigger the manual `release` workflow with tag `v0.3.0` after merging to `main`
+- `v0.4.0` tag — code and CHANGELOG are release-ready; trigger the manual `release` workflow with tag `v0.4.0` after merging to `main`
 
 ### Completion Snapshot
 
