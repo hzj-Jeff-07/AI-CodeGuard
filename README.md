@@ -18,7 +18,7 @@ What is implemented today:
 - Config loading via `.codeguard.yml` / environment variables
 - Disk cache for Stage 2 LLM results (`cache.enabled`), wired into the scan pipeline
 - GitHub composite Action (`action.yml`) plus CI / SARIF-upload workflows
-- Automated validation with **297 passing tests across 11 test files** (`npm run test:run` on 2026-07-05), plus an opt-in real-provider E2E test (skipped without `CODEGUARD_E2E=1` + API key) and a CI smoke job exercising the composite Action against the fixtures
+- Automated validation with **302 passing tests across 11 test files** (`npm run test:run` on 2026-07-05), plus an opt-in real-provider E2E test (skipped without `CODEGUARD_E2E=1` + API key) and a CI smoke job exercising the composite Action against the fixtures
 
 What is **not** complete yet:
 - npm registry publish (GitHub tags exist via the release workflow, but the package is not on npm yet)
@@ -317,7 +317,7 @@ npm run test:run
 Result:
 - build passed
 - `10` test files passed
-- `297` tests passed (plus 1 opt-in E2E skipped without an API key)
+- `302` tests passed (plus 1 opt-in E2E skipped without an API key)
 
 ## Limitations
 
@@ -326,7 +326,8 @@ Current known limitations:
 - parser uses Tree-sitter with a compatibility-preserving normalized AST layer
 - model-cost enforcement depends on a built-in pricing table; if `llm.maxCostUSD` is set for an unknown model, the scan fails fast
 - `rules test` is intentionally Stage 1-only and does not exercise Stage 2
-- Go covers 8 rules (`CG-001`/`CG-002`/`CG-020`/`CG-021`/`CG-030`/`CG-040`/`CG-050`/`CG-060`); Java covers those plus `CG-041` (9 total). `CG-003` (eval/code injection), `CG-010`/`CG-011` (XSS), and `CG-031` (arbitrary file access) have no Go/Java equivalent yet. Stage 1 has no dataflow analysis, so inline `db.Query(fmt.Sprintf(...))` / `Files.readString(Paths.get(...))` may report both the outer call and the inner call; nested Go struct literals (e.g. a `tls.Config` inside an `http.Transport`) can likewise double-report a `CG-050` misconfiguration at both levels
+- Go covers 8 rules (`CG-001`/`CG-002`/`CG-020`/`CG-021`/`CG-030`/`CG-040`/`CG-050`/`CG-060`); Java covers those plus `CG-041` (9 total). `CG-003` (eval/code injection), `CG-010`/`CG-011` (XSS), and `CG-031` (arbitrary file access) have no Go/Java equivalent yet
+- Stage 1 has no dataflow analysis, so a rule can independently flag both an outer call and a call nested inside it for the same underlying issue (e.g. `db.Query(fmt.Sprintf(...))`, or a Go `tls.Config` struct literal nested inside an `http.Transport` literal). `runRules()` now suppresses same-rule findings whose location is fully contained within another finding of the same rule in the same file, keeping only the outer, more-contextual one — the separate two-step pattern (`query := fmt.Sprintf(...); db.Query(query)`), where the calls aren't nested, is unaffected and still reported
 - `config.output.format` is defined, but the scan command’s CLI default still prefers text unless `--output` is explicitly provided
 - fix suggestions are advisory only; the CLI does not rewrite files automatically
 

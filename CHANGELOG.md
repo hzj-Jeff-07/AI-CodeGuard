@@ -12,7 +12,12 @@ All notable changes to AI-CodeGuard are documented here. The format follows [Kee
   - `CG-041` Insecure Deserialization (Java only) — `readObject()` method calls, the classic `ObjectInputStream`/`XMLDecoder` gadget-chain vector; Go has no equivalently clean idiom and is not covered
   - `CG-050` Security Misconfiguration — Go: `tls.Config{InsecureSkipVerify: true}`; Java: Spring `.csrf().disable()`, `.allowedOrigins("*")`, `setSecure(false)`, `setHttpOnly(false)`
   - Parser-level addition: Go `composite_literal` nodes (struct literals like `&tls.Config{...}`) are now normalized into the AST so text-pattern rules like `CG-050` can see them — previously only call/template/concat/credential nodes were reachable, so a misconfiguration expressed as a struct literal (not wrapped in a function call) was invisible to Stage 1
-  - 20 new tests across the four rules; suite now at 297 tests (+1 opt-in skip)
+  - 20 new tests across the four rules
+
+### Fixed
+
+- **Nested same-rule duplicate findings** — Stage 1's lack of dataflow analysis meant a rule could independently fire on both an outer call and a call nested inside it for the same underlying issue (e.g. `db.Query(fmt.Sprintf(...))` reported the `db.Query` call and the `fmt.Sprintf` call as two separate `CG-001` findings; nesting a Go `tls.Config` literal inside an `http.Transport` literal double-reported `CG-050`). `runRules()` now suppresses a finding when its location is fully contained within another finding of the same rule in the same file, keeping only the outer, more-contextual one. The genuinely separate two-step pattern (`query := fmt.Sprintf(...); db.Query(query)`, not nested) is unaffected and still reported once.
+- 5 new tests covering the suppression and confirming the two-step pattern still reports; suite now at 302 tests (+1 opt-in skip)
 
 ## [0.3.0] — 2026-07-05
 

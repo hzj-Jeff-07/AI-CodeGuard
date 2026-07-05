@@ -265,7 +265,7 @@ rules:
 
 1. **Go / Java 覆盖范围**
    - Go 支持 `CG-001` / `CG-002` / `CG-020` / `CG-021` / `CG-030` / `CG-040` / `CG-050` / `CG-060` 共 8 条；Java 在此基础上再加 `CG-041` 共 9 条。`CG-003`（eval/code injection）、`CG-010`/`CG-011`（XSS）、`CG-031`（arbitrary file access）在两种语言里都还没有清晰对等写法，暂不覆盖。
-   - Stage 1 无数据流分析：`query := fmt.Sprintf(...)` 两步写法靠 “Sprintf 组装 SQL” 启发式命中；内联 `db.Query(fmt.Sprintf(...))` / `Files.readString(Paths.get(...))` 会同时报外层调用与内层调用两条；同理，嵌套的 Go struct 字面量（例如 `tls.Config` 嵌在 `http.Transport` 里）也可能在内外两层各报一次 `CG-050`。
+   - Stage 1 无数据流分析：`query := fmt.Sprintf(...)` 两步写法靠 “Sprintf 组装 SQL” 启发式命中。内联嵌套时（如 `db.Query(fmt.Sprintf(...))`、嵌套的 Go struct 字面量 `tls.Config` 嵌在 `http.Transport` 里）同一条规则本会同时命中外层与内层调用；`runRules()` 现在会在同一文件内、同一 ruleId 下，抑制完全被另一条命中"包含"的内层重复项，只保留外层这条更完整的 finding——不影响真正的两步模式（Sprintf 与 Query 是两条独立语句，不构成嵌套）。
 2. **`rules test` 是 Stage 1-only smoke path**
    - 用于验证 custom rules 命中情况，不覆盖 Stage 2。
 3. **custom rules 仍受限于当前归一化 AST 能力**

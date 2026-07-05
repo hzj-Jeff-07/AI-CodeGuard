@@ -1,4 +1,4 @@
-import type { ASTNode, ASTree, SuspiciousNode } from '../types/index.js';
+import type { ASTNode, ASTree, SourceLocation, SuspiciousNode } from '../types/index.js';
 import { walkAST } from '../parser/ast-walker.js';
 import { createRuleContext, type BuiltInRule } from './engine.js';
 import * as builtInRules from './built-in/index.js';
@@ -47,7 +47,7 @@ export function runRules(
   file: string,
 ): SuspiciousNode[] {
   const ctx = createRuleContext(file, tree.language, tree.source);
-  const suspiciousNodes: SuspiciousNode[] = [];
+  const rawResults: SuspiciousNode[] = [];
   const seenLocations = new Set<string>();
 
   const applicableRules = rules.filter(r =>
@@ -62,14 +62,43 @@ export function runRules(
           const key = `${result.ruleId}:${result.location.start.line}:${result.location.start.column}`;
           if (!seenLocations.has(key)) {
             seenLocations.add(key);
-            suspiciousNodes.push(result);
+            rawResults.push(result);
           }
         }
       }
     },
   });
 
-  return suspiciousNodes;
+  return suppressNestedDuplicates(rawResults);
+}
+
+// Stage 1 has no dataflow analysis, so a single rule can independently flag
+// both an outer call and a call nested inside it for the same underlying
+// issue — e.g. Go/Java's SQL-injection rule flags both `db.Query(...)` and
+// the `fmt.Sprintf(...)` nested inside it, since Sprintf/String.format
+// assembling SQL is also treated as suspicious on its own (needed to catch
+// the two-step `query := fmt.Sprintf(...); db.Query(query)` pattern). When
+// the same rule fires on a span fully contained within another of its own
+// matches in the same file, keep only the outer, more-contextual finding.
+function suppressNestedDuplicates(results: SuspiciousNode[]): SuspiciousNode[] {
+  return results.filter(candidate => !results.some(other =>
+    other !== candidate
+    && other.ruleId === candidate.ruleId
+    && strictlyContains(other.location, candidate.location)
+  ));
+}
+
+function strictlyContains(outer: SourceLocation, inner: SourceLocation): boolean {
+  const startsBefore = outer.start.line < inner.start.line
+    || (outer.start.line === inner.start.line && outer.start.column <= inner.start.column);
+  const endsAfter = outer.end.line > inner.end.line
+    || (outer.end.line === inner.end.line && outer.end.column >= inner.end.column);
+  const isSmallerSpan = outer.start.line !== inner.start.line
+    || outer.start.column !== inner.start.column
+    || outer.end.line !== inner.end.line
+    || outer.end.column !== inner.end.column;
+
+  return startsBefore && endsAfter && isSmallerSpan;
 }
 
 export function getAllRuleIds(): string[] {
