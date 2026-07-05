@@ -14,7 +14,7 @@
 - `rules create` 负责生成最小可用 rule scaffold，支持 `--force`
 - `rules test` 复用 `scan()` 主流程，以 **Stage 1-only** 方式验证 custom rules
 - 运行方式：`scan()` 中先加载规则，再对 Tree-sitter 归一化 ASTree 执行逐节点检查
-- 支持语言：JavaScript / TypeScript / Python
+- 支持语言：JavaScript / TypeScript / Python（全部 13 条规则）/ Go / Java（各 5 条：CG-001/002/020/030/060）
 
 当前**尚未实现**：
 
