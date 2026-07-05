@@ -483,6 +483,50 @@ describe('CG-010: Cross-Site Scripting (XSS)', () => {
   });
 });
 
+describe('CG-010: Cross-Site Scripting (XSS) (Python)', () => {
+  it('detects mark_safe with a variable argument', async () => {
+    const results = await scanCode('mark_safe(user_input)', 'python');
+    expect(findByRule(results, 'CG-010').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects Markup with an f-string argument', async () => {
+    const results = await scanCode('Markup(f"<b>{name}</b>")', 'python');
+    expect(findByRule(results, 'CG-010').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects render_template_string with a variable template', async () => {
+    const results = await scanCode('render_template_string(user_template)', 'python');
+    expect(findByRule(results, 'CG-010').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores mark_safe with a static string literal', async () => {
+    const results = await scanCode('mark_safe("<b>Bold</b>")', 'python');
+    expect(findByRule(results, 'CG-010').length).toBe(0);
+  });
+});
+
+describe('CG-010: Cross-Site Scripting (XSS) (Java)', () => {
+  it('detects response.getWriter().write(request.getParameter(...))', async () => {
+    const source = `class T {
+  void f(HttpServletResponse response, HttpServletRequest request) throws Exception {
+    response.getWriter().write(request.getParameter("name"));
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-010').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores response.getWriter().write with a static string literal', async () => {
+    const source = `class T {
+  void f(HttpServletResponse response) throws Exception {
+    response.getWriter().write("<html>OK</html>");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-010').length).toBe(0);
+  });
+});
+
 // ── CG-011: DOM-based XSS ──────────────────────────────────────
 
 describe('CG-011: DOM-based XSS', () => {
@@ -601,6 +645,28 @@ describe('CG-021: Weak Cryptography (Java)', () => {
   });
 });
 
+describe('CG-021: Weak Cryptography (PHP)', () => {
+  it('detects bare md5()', async () => {
+    const results = await scanCode('<?php $h = md5($password);', 'php');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects bare sha1()', async () => {
+    const results = await scanCode('<?php $h = sha1($password);', 'php');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("detects hash('md5', ...)", async () => {
+    const results = await scanCode("<?php $h = hash('md5', $password);", 'php');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("ignores hash('sha256', ...)", async () => {
+    const results = await scanCode("<?php $h = hash('sha256', $password);", 'php');
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
+});
+
 // ── CG-030: Path Traversal ──────────────────────────────────────
 
 describe('CG-030: Path Traversal', () => {
@@ -630,6 +696,64 @@ describe('CG-031: Arbitrary File Access', () => {
 
   it('ignores readFile with static path', async () => {
     const results = await scanCode('fs.readFile("config.json")');
+    expect(findByRule(results, 'CG-031').length).toBe(0);
+  });
+});
+
+describe('CG-031: Arbitrary File Access (Go)', () => {
+  it('detects os.Open with a URL query parameter', async () => {
+    const source = `package main
+func f(r *http.Request) (*os.File, error) {
+	return os.Open(r.URL.Query().Get("path"))
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores os.Open with a static path', async () => {
+    const source = `package main
+func f() (*os.File, error) {
+	return os.Open("config.json")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-031').length).toBe(0);
+  });
+});
+
+describe('CG-031: Arbitrary File Access (Java)', () => {
+  it('detects new File(request.getParameter(...))', async () => {
+    const source = `class T {
+  File f(HttpServletRequest request) {
+    return new File(request.getParameter("path"));
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores new File with a static path', async () => {
+    const source = `class T {
+  File f() {
+    return new File("config.json");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-031').length).toBe(0);
+  });
+});
+
+describe('CG-031: Arbitrary File Access (PHP)', () => {
+  it('detects file_get_contents with $_GET input', async () => {
+    const results = await scanCode(
+      '<?php $data = file_get_contents($_GET["path"]);', 'php'
+    );
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores file_get_contents with a static path', async () => {
+    const results = await scanCode(
+      '<?php $data = file_get_contents("config.json");', 'php'
+    );
     expect(findByRule(results, 'CG-031').length).toBe(0);
   });
 });
@@ -726,6 +850,28 @@ describe('CG-040: Sensitive Data Exposure (Java)', () => {
   });
 });
 
+describe('CG-040: Sensitive Data Exposure (PHP)', () => {
+  it('detects error_log logging a password', async () => {
+    const results = await scanCode('<?php error_log("password=" . $password);', 'php');
+    expect(findByRule(results, 'CG-040').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("detects Log::error (Laravel-style facade) logging a token", async () => {
+    const results = await scanCode('<?php Log::error("token=" . $token);', 'php');
+    expect(findByRule(results, 'CG-040').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects $logger->info logging a secret', async () => {
+    const results = await scanCode('<?php $logger->info("secret: " . $secret);', 'php');
+    expect(findByRule(results, 'CG-040').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores logging non-sensitive data', async () => {
+    const results = await scanCode('<?php $logger->info("server started");', 'php');
+    expect(findByRule(results, 'CG-040').length).toBe(0);
+  });
+});
+
 // ── CG-041: Insecure Deserialization ────────────────────────────
 
 describe('CG-041: Insecure Deserialization', () => {
@@ -763,6 +909,18 @@ describe('CG-041: Insecure Deserialization (Java)', () => {
   }
 }`;
     const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-041').length).toBe(0);
+  });
+});
+
+describe('CG-041: Insecure Deserialization (PHP)', () => {
+  it('detects bare unserialize()', async () => {
+    const results = await scanCode('<?php $obj = unserialize($data);', 'php');
+    expect(findByRule(results, 'CG-041').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores unrelated function calls', async () => {
+    const results = await scanCode('<?php $s = trim($data);', 'php');
     expect(findByRule(results, 'CG-041').length).toBe(0);
   });
 });
@@ -855,6 +1013,27 @@ describe('CG-050: Security Misconfiguration (Java)', () => {
   }
 }`;
     const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-050').length).toBe(0);
+  });
+});
+
+describe('CG-050: Security Misconfiguration (PHP)', () => {
+  it('detects CURLOPT_SSL_VERIFYPEER disabled', async () => {
+    const results = await scanCode(
+      '<?php curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);', 'php'
+    );
+    expect(findByRule(results, 'CG-050').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("detects ini_set('display_errors', 1)", async () => {
+    const results = await scanCode("<?php ini_set('display_errors', 1);", 'php');
+    expect(findByRule(results, 'CG-050').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores CURLOPT_SSL_VERIFYPEER enabled', async () => {
+    const results = await scanCode(
+      '<?php curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);', 'php'
+    );
     expect(findByRule(results, 'CG-050').length).toBe(0);
   });
 });

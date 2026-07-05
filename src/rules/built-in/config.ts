@@ -17,6 +17,10 @@ const MISCONFIG_PATTERNS = [
   { pattern: /\.allowedOrigins\(\s*["'`]\*["'`]/, name: 'CORS wildcard origin (Spring)' },
   { pattern: /\bsetSecure\(\s*false\s*\)/, name: 'Secure cookie flag disabled (Java)' },
   { pattern: /\bsetHttpOnly\(\s*false\s*\)/, name: 'HttpOnly flag disabled (Java)' },
+  // PHP: curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false) / CURLOPT_SSL_VERIFYHOST, 0
+  { pattern: /CURLOPT_SSL_VERIFY(?:PEER|HOST)\s*,\s*(?:false|0)\b/i, name: 'TLS verification disabled (PHP curl)' },
+  // PHP: ini_set('display_errors', 1) / php.ini's `display_errors = 1`
+  { pattern: /display_errors['"]?\s*(?:,|=)\s*['"]?1\b/i, name: 'Debug mode enabled (PHP)' },
 ];
 
 export const securityMisconfiguration: BuiltInRule = {
@@ -24,7 +28,7 @@ export const securityMisconfiguration: BuiltInRule = {
   name: 'Security Misconfiguration',
   severity: 'medium',
   category: 'config',
-  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java', 'php'],
   description: 'Detects common security misconfigurations (CORS wildcard, debug mode, disabled TLS verification).',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {

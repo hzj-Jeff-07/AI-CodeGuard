@@ -6,6 +6,8 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 
 public class Stretch {
 
@@ -51,5 +53,15 @@ public class Stretch {
     // Vulnerable: Security Misconfiguration (CG-050) — CSRF disabled
     public void configure(HttpSecurity http) throws Exception {
         http.csrf().disable();
+    }
+
+    // Vulnerable: Arbitrary File Read/Write (CG-031) — path from request parameter
+    public File readRequestedFile(HttpServletRequest request) {
+        return new File(request.getParameter("path"));
+    }
+
+    // Vulnerable: Cross-Site Scripting (CG-010) — unescaped reflection to response
+    public void echoName(HttpServletRequest request, HttpServletResponse response) throws Exception {
+        response.getWriter().write(request.getParameter("name"));
     }
 }

@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
+import javax.servlet.http.HttpServletResponse;
 
 public class SecureStretch {
 
@@ -46,5 +47,10 @@ public class SecureStretch {
         http.csrf();
         cookie.setSecure(true);
         cookie.setHttpOnly(true);
+    }
+
+    // Safe: static response body, not attacker-controlled input
+    public void staticResponse(HttpServletResponse response) throws Exception {
+        response.getWriter().write("<html>OK</html>");
     }
 }

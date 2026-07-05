@@ -48,13 +48,17 @@ const CRYPTO_CALLS = ['createHash', 'createCipher', 'createCipheriv', 'createDec
 // crypto/des, crypto/rc4 have no strong-algorithm alternative under the same name).
 const WEAK_CRYPTO_PACKAGES_GO = ['md5', 'sha1', 'des', 'rc4', 'md4'];
 const CRYPTO_OBJECTS_JAVA = ['MessageDigest', 'Cipher'];
+// PHP's md5()/sha1() are bare global functions with no algorithm argument —
+// calling them at all is the weak-crypto signal, unlike hash(), which takes
+// the algorithm as its first argument and needs the WEAK_CRYPTO text check.
+const WEAK_CRYPTO_BARE_PHP = ['md5', 'sha1'];
 
 export const weakCryptography: BuiltInRule = {
   id: 'CG-021',
   name: 'Weak Cryptography',
   severity: 'medium',
   category: 'auth',
-  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java', 'php'],
   description: 'Detects use of weak cryptographic algorithms (MD5, SHA1, DES, RC4).',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -102,6 +106,29 @@ export const weakCryptography: BuiltInRule = {
         context: ctx.getContext(node, 2),
         confidence: 0.85,
         metadata: { method: call.name, object: call.object },
+      };
+    }
+
+    if (ctx.language === 'php') {
+      const isWeakBareCall = call.object === null && WEAK_CRYPTO_BARE_PHP.includes(call.name);
+      const isWeakHashCall = call.object === null && call.name === 'hash'
+        && WEAK_CRYPTO.some(algo =>
+          call.fullExpression.toLowerCase().includes(`'${algo}'`) ||
+          call.fullExpression.toLowerCase().includes(`"${algo}"`)
+        );
+      if (!isWeakBareCall && !isWeakHashCall) return null;
+
+      return {
+        file: ctx.file,
+        language: ctx.language,
+        ruleId: 'CG-021',
+        ruleName: 'Weak Cryptography',
+        node,
+        location: node.location,
+        snippet: ctx.getSnippet(node),
+        context: ctx.getContext(node, 2),
+        confidence: 0.85,
+        metadata: { method: call.name },
       };
     }
 

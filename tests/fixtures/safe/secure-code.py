@@ -22,3 +22,9 @@ def load_config(config_str):
 # Safe: Normal function
 def add(a, b):
     return a + b
+
+# Safe: mark_safe on a fixed literal, not attacker-controlled input
+from django.utils.safestring import mark_safe
+
+def render_banner():
+    return mark_safe("<b>Welcome</b>")

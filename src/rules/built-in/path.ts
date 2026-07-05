@@ -86,12 +86,30 @@ export const pathTraversal: BuiltInRule = {
   },
 };
 
+const READ_WRITE_FN = ['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'open'];
+const USER_INPUT_JS_PY = /\b(req\.|params\.|query\.|body\.|request\.|args\.|argv)/;
+
+const READ_WRITE_GO = ['Open', 'OpenFile', 'Create', 'ReadFile', 'WriteFile'];
+const READ_WRITE_OBJECTS_GO = ['os', 'ioutil'];
+// net/http's Request fields and common router libs (gorilla/mux, gin) are the
+// usual sources of attacker-controlled path segments in Go web handlers.
+const USER_INPUT_GO = /\b(r\.URL\.Query|r\.FormValue|r\.PostFormValue|mux\.Vars|c\.Param\(|c\.Query\(|os\.Args)\b/;
+
+const READ_WRITE_CONSTRUCTORS_JAVA = ['File', 'FileInputStream', 'FileOutputStream',
+  'FileReader', 'FileWriter'];
+const READ_WRITE_METHODS_JAVA = ['readAllBytes', 'write', 'newInputStream', 'newOutputStream'];
+const READ_WRITE_OBJECTS_JAVA = ['Files', 'Paths', 'Path'];
+const USER_INPUT_JAVA = /\b(getParameter|getHeader|getQueryString)\b/;
+
+const READ_WRITE_PHP = ['file_get_contents', 'file_put_contents', 'fopen', 'readfile'];
+const USER_INPUT_PHP = /\$_(GET|POST|REQUEST|COOKIE)\b/;
+
 export const arbitraryFileAccess: BuiltInRule = {
   id: 'CG-031',
   name: 'Arbitrary File Read/Write',
   severity: 'high',
   category: 'path',
-  languages: ['javascript', 'typescript', 'python'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java', 'php'],
   description: 'Detects file read/write operations where the path comes from external input.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -100,12 +118,35 @@ export const arbitraryFileAccess: BuiltInRule = {
     const call = ctx.extractCallInfo(node);
     if (!call) return null;
 
-    const readWrite = ['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'open'];
-    if (!readWrite.includes(call.name)) return null;
+    let matchesTarget: boolean;
+    if (ctx.language === 'go') {
+      matchesTarget = READ_WRITE_GO.includes(call.name)
+        && call.object !== null && READ_WRITE_OBJECTS_GO.includes(call.object);
+    } else if (ctx.language === 'java') {
+      const isConstructor = !call.object && READ_WRITE_CONSTRUCTORS_JAVA.includes(call.name);
+      const isStaticHelper = call.object !== null
+        && READ_WRITE_OBJECTS_JAVA.includes(call.object)
+        && READ_WRITE_METHODS_JAVA.includes(call.name);
+      matchesTarget = isConstructor || isStaticHelper;
+    } else if (ctx.language === 'php') {
+      matchesTarget = call.object === null && READ_WRITE_PHP.includes(call.name);
+    } else {
+      matchesTarget = READ_WRITE_FN.includes(call.name);
+    }
+    if (!matchesTarget) return null;
 
-    // Check if path argument references req, params, query, body
+    // Check if the path argument references a source of external input
     const text = call.fullExpression;
-    const hasUserInput = /\b(req\.|params\.|query\.|body\.|request\.|args\.|argv)/.test(text);
+    let hasUserInput: boolean;
+    if (ctx.language === 'go') {
+      hasUserInput = USER_INPUT_GO.test(text);
+    } else if (ctx.language === 'java') {
+      hasUserInput = USER_INPUT_JAVA.test(text);
+    } else if (ctx.language === 'php') {
+      hasUserInput = USER_INPUT_PHP.test(text);
+    } else {
+      hasUserInput = USER_INPUT_JS_PY.test(text);
+    }
     if (!hasUserInput) return null;
 
     return {

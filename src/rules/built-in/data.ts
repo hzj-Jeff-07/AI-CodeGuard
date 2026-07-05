@@ -8,13 +8,18 @@ const LOG_METHODS_GO = ['println', 'printf', 'print', 'info', 'infof', 'error', 
   'warn', 'warnf', 'debug', 'debugf', 'fatal', 'fatalf'];
 const LOG_OBJECTS_JAVA = ['logger', 'log', 'system.out', 'system.err'];
 const LOG_METHODS_JAVA = ['println', 'print', 'info', 'debug', 'warn', 'error', 'trace', 'fatal'];
+const LOG_OBJECTS_PHP = ['log', 'logger'];
+const LOG_METHODS_PHP = ['info', 'debug', 'warn', 'warning', 'error', 'critical',
+  'emergency', 'alert', 'notice', 'log'];
+// error_log/syslog are PHP's bare global logging functions (no receiver).
+const LOG_FUNCTIONS_PHP = ['error_log', 'syslog'];
 
 export const sensitiveDataExposure: BuiltInRule = {
   id: 'CG-040',
   name: 'Sensitive Data Exposure',
   severity: 'medium',
   category: 'data',
-  languages: ['javascript', 'typescript', 'python', 'go', 'java'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java', 'php'],
   description: 'Detects logging or exposure of sensitive data such as passwords, tokens, or PII.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -32,6 +37,11 @@ export const sensitiveDataExposure: BuiltInRule = {
       isLogCall = call.object !== null
         && LOG_OBJECTS_JAVA.some(o => call.object!.toLowerCase().includes(o))
         && LOG_METHODS_JAVA.includes(call.name.toLowerCase());
+    } else if (ctx.language === 'php') {
+      isLogCall = LOG_FUNCTIONS_PHP.includes(call.name) ||
+        (call.object !== null
+          && LOG_OBJECTS_PHP.some(o => call.object!.toLowerCase().includes(o))
+          && LOG_METHODS_PHP.includes(call.name.toLowerCase()));
     } else {
       // Bare call names stay case-sensitive: lowercasing would make `new
       // Error(...)` collide with the `error` entry in LOG_FUNCTIONS. Only
@@ -72,7 +82,7 @@ export const insecureDeserialization: BuiltInRule = {
   name: 'Insecure Deserialization',
   severity: 'high',
   category: 'data',
-  languages: ['javascript', 'typescript', 'python', 'java'],
+  languages: ['javascript', 'typescript', 'python', 'java', 'php'],
   description: 'Detects deserialization of untrusted data (pickle, yaml.load, ObjectInputStream, etc.).',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -99,7 +109,9 @@ export const insecureDeserialization: BuiltInRule = {
       };
     }
 
-    // JS: node-serialize, serialize-javascript
+    // JS: node-serialize, serialize-javascript. Also covers PHP's bare
+    // global `unserialize()` — the classic PHP object-injection gadget-chain
+    // vector — since both languages' rule branch reach this same check.
     if (DESER_FUNCTIONS_JS.includes(call.name)) {
       return {
         file: ctx.file,

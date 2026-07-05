@@ -28,3 +28,20 @@ function readConfig() {
 function healthCheck() {
     return curl_init("https://status.example.com/health");
 }
+
+// Safe: strong hash algorithm
+function hashPassword($password) {
+    return hash('sha256', $password);
+}
+
+// Safe: non-sensitive log message
+function logStartup() {
+    error_log("service started");
+}
+
+// Safe: TLS verification enabled
+function secureFetch($ch, $url) {
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    return curl_exec($ch);
+}

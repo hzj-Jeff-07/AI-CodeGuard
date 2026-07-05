@@ -2,6 +2,21 @@
 
 All notable changes to AI-CodeGuard are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **PHP rule depth: 6 → 11 rules**, closing the gap with Go/Java:
+  - `CG-021` Weak Cryptography — bare `md5()`/`sha1()` calls (no algorithm argument needed — calling them at all is the signal) and `hash()` called with a weak algorithm string; `hash('sha256', ...)` is not flagged
+  - `CG-040` Sensitive Data Exposure — `error_log`/`syslog` bare calls, plus `log`/`logger`-receiver method calls (`Log::error(...)` Laravel-style facades, `$logger->info(...)` Monolog-style) carrying password/token/secret/PII text
+  - `CG-041` Insecure Deserialization — PHP's `unserialize()`, the classic PHP object-injection gadget-chain vector, reuses the existing JS `deserialize`/`unserialize` name check with no new matching code
+  - `CG-050` Security Misconfiguration — `curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false)`/`CURLOPT_SSL_VERIFYHOST` and `ini_set('display_errors', 1)`/php.ini's `display_errors = 1`
+  - 13 new tests plus a `stretch.php` vulnerable fixture (and safe counterparts in `secure-code.php`) covering all four
+- **`CG-031` Arbitrary File Read/Write extended to Go, Java, and PHP** (previously JS/TS/Python only): Go's `os.Open/OpenFile/Create/ReadFile/WriteFile` combined with `r.URL.Query`/`r.FormValue`/`mux.Vars`/`os.Args`; Java's `new File(...)` or `Files`/`Paths` static helpers combined with `getParameter`/`getHeader`/`getQueryString`; PHP's `file_get_contents`/`file_put_contents`/`fopen`/`readfile` combined with `$_GET`/`$_POST`/`$_REQUEST`/`$_COOKIE`. 6 new tests.
+- **`CG-010` XSS extended to Python and Java** (previously JS/TS only): Python's `mark_safe`(Django)/`Markup`(Flask/Jinja2's markupsafe)/`render_template_string` calls, and Java's `response.getWriter().write/print/println`. Both require a non-literal argument (a lone static string literal is inert output and is not flagged) to avoid flagging the common safe pattern of wrapping a fixed string as pre-escaped HTML. 6 new tests plus fixture coverage in `injection.py`/`secure-code.py` and `Stretch.java`/`SecureStretch.java`.
+
+Suite now at 360 tests; self-scan and fixture-directory finding counts verified unchanged for existing rules.
+
 ## [0.4.0] — 2026-07-05
 
 ### Added

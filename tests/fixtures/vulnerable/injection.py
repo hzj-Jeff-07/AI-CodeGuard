@@ -26,3 +26,9 @@ def load_data(data):
 
 def load_config(config_str):
     return yaml.load(config_str)
+
+# Vulnerable: Cross-Site Scripting (CG-010) - Python
+from django.utils.safestring import mark_safe
+
+def render_comment(comment):
+    return mark_safe(comment)
