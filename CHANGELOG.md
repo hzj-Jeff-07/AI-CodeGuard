@@ -32,7 +32,12 @@ All notable changes to AI-CodeGuard are documented here. The format follows [Kee
 - **`CG-002`'s Python-function matching wasn't gated to Python** — `isPyCmd` (matching bare `system`/`popen`/`call`/`run`/`Popen`/etc.) never checked `ctx.language`, so adding PHP to `CG-002`'s language list newly exposed any Go/PHP codebase to false positives from unrelated bare functions coincidentally named `call`/`run`/`Popen` with dynamic string content. `isPyCmd` is now gated to Python; PHP's `system`/`popen` (previously covered only as a side effect of the ungated check) are now matched explicitly via `CMD_FUNCTIONS_PHP` instead.
 - 6 new tests: capitalized-logger-object detection, the `new Error(...)` false-positive guard, PHP `system`/`popen` detection, and Go/PHP guards against the cross-language false positive
 
-Suite now at 335 tests (+1 opt-in skip).
+### Changed
+
+- Extracted the byte-for-byte-identical `findOuterArgumentsStart` helper (chained-call outer-argument-list resolution) out of `java.ts` and `php.ts` into a shared `src/parser/languages/shared.ts`, so a future fix to the paren-matching logic can't silently apply to one language's adapter and not the other's
+- `runRules()`'s nested-duplicate suppression now groups findings by `ruleId` before doing the pairwise containment check, instead of comparing every finding in a file against every other finding — containment can only ever apply within the same rule, so this avoids O(n²) comparisons across unrelated rule IDs on files with many findings
+
+Suite now at 335 tests (+1 opt-in skip); behavior verified unchanged (self-scan and fixture-directory finding counts identical before/after).
 
 ## [0.3.0] — 2026-07-05
 
