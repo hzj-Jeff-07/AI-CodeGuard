@@ -43,7 +43,9 @@ export const hardcodedCredentials: BuiltInRule = {
 
 const WEAK_CRYPTO = ['md5', 'sha1', 'sha-1', 'des', 'rc4', 'md4'];
 const CRYPTO_CALLS = ['createHash', 'createCipher', 'createCipheriv', 'createDecipher',
-  'hashlib.md5', 'hashlib.sha1'];
+  // `hashlib.md5(...)`/`hashlib.sha1(...)` are the direct forms; `hashlib.new('md5', ...)`
+  // is the generic constructor and is caught via the weak-algorithm string.
+  'hashlib.md5', 'hashlib.sha1', 'hashlib.new'];
 // Go: the package itself is the weak-crypto signal (crypto/md5, crypto/sha1,
 // crypto/des, crypto/rc4 have no strong-algorithm alternative under the same name).
 const WEAK_CRYPTO_PACKAGES_GO = ['md5', 'sha1', 'des', 'rc4', 'md4'];

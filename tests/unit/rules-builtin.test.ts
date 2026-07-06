@@ -999,6 +999,16 @@ describe('CG-021: Weak Cryptography', () => {
     const results = await scanCode("crypto.createCipheriv('aes-256-cbc', key, iv)");
     expect(findByRule(results, 'CG-021').length).toBe(0);
   });
+
+  it("detects Python hashlib.new('md5')", async () => {
+    const results = await scanCode("h = hashlib.new('md5', data)", 'python');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("ignores Python hashlib.new('sha256')", async () => {
+    const results = await scanCode("h = hashlib.new('sha256', data)", 'python');
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
 });
 
 describe('CG-021: Weak Cryptography — ECB mode', () => {
