@@ -694,6 +694,86 @@ describe('CG-026: JWT Signature Bypass (PHP)', () => {
   });
 });
 
+// ── CG-070: XML External Entity (XXE) ─────────────────────────────
+
+describe('CG-070: XML External Entity (XXE)', () => {
+  it('detects libxmljs parseXml with noent: true', async () => {
+    const results = await scanCode('libxmljs.parseXml(data, { noent: true })');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores parseXml with noent: false', async () => {
+    const results = await scanCode('libxmljs.parseXml(data, { noent: false })');
+    expect(findByRule(results, 'CG-070').length).toBe(0);
+  });
+});
+
+describe('CG-070: XML External Entity (XXE) (Python)', () => {
+  it('detects an lxml parser with resolve_entities=True', async () => {
+    const results = await scanCode('parser = etree.XMLParser(resolve_entities=True)', 'python');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects an lxml parser with no_network=False', async () => {
+    const results = await scanCode('parser = etree.XMLParser(no_network=False)', 'python');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a hardened lxml parser', async () => {
+    const results = await scanCode('parser = etree.XMLParser(resolve_entities=False, no_network=True)', 'python');
+    expect(findByRule(results, 'CG-070').length).toBe(0);
+  });
+});
+
+describe('CG-070: XML External Entity (XXE) (Java)', () => {
+  it('detects enabling the load-external-dtd feature', async () => {
+    const source = `class T {
+  void f(DocumentBuilderFactory dbf) throws Exception {
+    dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", true);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects setExpandEntityReferences(true)', async () => {
+    const source = `class T {
+  void f(DocumentBuilderFactory dbf) {
+    dbf.setExpandEntityReferences(true);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores the hardening call disallow-doctype-decl = true', async () => {
+    const source = `class T {
+  void f(DocumentBuilderFactory dbf) throws Exception {
+    dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-070').length).toBe(0);
+  });
+});
+
+describe('CG-070: XML External Entity (XXE) (PHP)', () => {
+  it('detects the LIBXML_NOENT flag', async () => {
+    const results = await scanCode('<?php $x = simplexml_load_string($data, "SimpleXMLElement", LIBXML_NOENT);', 'php');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects re-enabling the entity loader', async () => {
+    const results = await scanCode('<?php libxml_disable_entity_loader(false);', 'php');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a plain simplexml_load_string', async () => {
+    const results = await scanCode('<?php $x = simplexml_load_string($data);', 'php');
+    expect(findByRule(results, 'CG-070').length).toBe(0);
+  });
+});
+
 // ── CG-010: XSS ────────────────────────────────────────────────
 
 describe('CG-010: Cross-Site Scripting (XSS)', () => {

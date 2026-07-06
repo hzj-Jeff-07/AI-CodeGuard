@@ -8,3 +8,4 @@ export { ssrf } from './ssrf.js';
 export { insecureRegex } from './redos.js';
 export { openRedirect } from './redirect.js';
 export { jwtSignatureBypass } from './jwt.js';
+export { xxe } from './xxe.js';

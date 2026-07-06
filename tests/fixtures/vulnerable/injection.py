@@ -56,3 +56,8 @@ def go_next(request):
 # Vulnerable: JWT Signature Bypass (CG-026) - disables signature checking
 def verify_token(jwt, token, key):
     return jwt.decode(token, key, options={"verify_signature": False})
+
+# Vulnerable: XML External Entity (CG-070) - external entities resolved
+def parse_xml(etree, data):
+    parser = etree.XMLParser(resolve_entities=True)
+    return etree.fromstring(data, parser)

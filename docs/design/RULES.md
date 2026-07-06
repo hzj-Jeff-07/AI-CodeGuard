@@ -6,7 +6,7 @@
 
 当前 AI-CodeGuard 的规则系统具备以下事实：
 
-- 规则来源：**18 条 TypeScript 内置规则 + 可选 YAML custom rules**
+- 规则来源：**19 条 TypeScript 内置规则 + 可选 YAML custom rules**
 - custom rules 入口：`rules.custom`
 - 命令入口：`rules --list`、`rules validate <path>`、`rules create <file>`、`rules test <rulesPath> [paths...]`
 - `rules --list` 当前**只列出 built-in rules**
@@ -14,7 +14,7 @@
 - `rules create` 负责生成最小可用 rule scaffold，支持 `--force`
 - `rules test` 复用 `scan()` 主流程，以 **Stage 1-only** 方式验证 custom rules
 - 运行方式：`scan()` 中先加载规则，再对 Tree-sitter 归一化 ASTree 执行逐节点检查
-- 支持语言：JavaScript / TypeScript（全部 18 条规则）/ Python（17 条，仅缺 `CG-011` DOM XSS）/ Go（12 条）/ Java（14 条）/ PHP（16 条，详见第 9 节）
+- 支持语言：JavaScript / TypeScript（全部 19 条规则）/ Python（18 条，仅缺 `CG-011` DOM XSS）/ Go（12 条）/ Java（15 条）/ PHP（17 条，详见第 9 节）
 
 当前**尚未实现**：
 
@@ -43,8 +43,8 @@ scan()
 ### 2.1 `loadRules()` 当前行为
 
 - `preset = none`：不加载 built-in rules
-- `preset = owasp-top-10`：当前返回全部 18 条 built-in rules
-- `preset = all`：当前也返回全部 18 条 built-in rules
+- `preset = owasp-top-10`：当前返回全部 19 条 built-in rules
+- `preset = all`：当前也返回全部 19 条 built-in rules
 - `custom`：可指向 **单个 YAML 文件**或**目录**
 - `custom` 指向目录时：递归加载其中的 `*.yml` / `*.yaml`
 - `disable = ['CG-050']`：对 **built-in + custom** 合并后的规则统一按 rule ID 过滤
@@ -113,7 +113,8 @@ custom rules 当前也共享这一能力边界，因此它们：
 | `CG-022` | Insecure Randomness | medium | JS / TS / Python / Go / Java / PHP | 非密码学 PRNG（`Math.random`、Python `random` 模块、Go `math/rand`、`java.util.Random`、PHP `rand`/`mt_rand`）用于生成 token/session/password 等安全敏感值；由于 Stage 1 无数据流分析，通过调用点前后 3 行文本中是否出现 `token`/`session`/`password`/`secret`/`otp`/`api_key`/`reset`/`nonce`/`csrf` 等关键词来推断意图（不加 `\b` 边界，因为关键词通常嵌在 camelCase 标识符里，如 `generateSessionID`）；`crypto.randomBytes`/Python `secrets`/`crypto/rand`/`SecureRandom`/PHP `random_bytes`/`random_int` 等安全替代不命中 |
 | `CG-023` | Insecure Regular Expression (ReDoS) | medium | JS / TS / Python / Go / Java / PHP | 正则表达式模式中出现嵌套/重叠量词（如 `(a+)+`、`(a*)*`），是灾难性回溯的经典信号；这是对正则文本本身的语法启发式检测，不是完整的 NFA/回溯复杂度分析，只覆盖这一种（现实中很常见的）形态；Python 侧限定 `re.` 接收者（避免与字符串的裸 `.split()`/`.match()` 等同名方法混淆）；Java 侧限定 `Pattern.compile(...)`；Go 侧限定 `regexp.` 接收者；PHP 侧匹配裸函数 `preg_match`/`preg_match_all`/`preg_replace`/`preg_split` |
 | `CG-025` | Open Redirect | medium | JS / TS / Python / Go / Java / PHP | 重定向目标由未校验的用户输入构成，可用于钓鱼；JS/TS 侧匹配 `res`/`response`/`reply`/`ctx` 接收者上的 `.redirect(...)`；Python 侧匹配裸函数 `redirect`/`HttpResponseRedirect`/`HttpResponsePermanentRedirect`（Flask/Django）；Go 侧匹配 `http.Redirect(...)`；Java 侧匹配 `response.sendRedirect(...)`（方法名本身信号足够明确，无需限定接收者）；PHP 侧匹配 `header(...)` 调用且参数实际包含 `Location:`（`header()` 用途很广，需要这个额外限定避免误报） |
-| `CG-026` | JWT Signature Bypass | critical | JS / TS / Python / PHP | JWT 校验被配置为接受 `"none"` 算法（`algorithms: ['none']`，等价于彻底关闭签名校验——攻击者可任意伪造 token）或显式关闭签名校验（Python PyJWT 的 `verify_signature: False`）；PHP 侧限定 `JWT::decode(...)`（firebase/php-jwt）传入的算法白名单里包含 `'none'`，因为 PHP 的 `algorithms` 是位置参数而非具名选项，需要额外限定调用点避免误报；Go/Java 未覆盖，因为常见 JWT 库的调用形态没有同样清晰、低误报的文本信号 |
+| `CG-026` | JWT Signature Bypass | critical | JS / TS / Python / PHP | JWT 校验被配置为接受 `"none"` 算法（`algorithms: ['none']`，等价于彻底关闭签名校验——攻击者可任意伪造 token）或显式关闭签名校验（Python PyJWT 的 `verify_signature: False`）；`none` 只要出现在算法白名单数组内即命中（不限于首元素，`['HS256', 'none']` 这种"与真实算法并列接受 none"同样可利用）；PHP 侧限定 `JWT::decode(...)`（firebase/php-jwt）传入的算法白名单里包含 `'none'`，因为 PHP 的 `algorithms` 是位置参数而非具名选项，需要额外限定调用点避免误报；Go/Java 未覆盖，因为常见 JWT 库的调用形态没有同样清晰、低误报的文本信号 |
+| `CG-070` | XML External Entity (XXE) | high | JS / TS / Python / Java / PHP | XML 解析被配置为解析外部实体 / 加载外部 DTD，可导致文件泄露、SSRF 或拒绝服务。由于 Stage 1 无法观察"缺少加固调用"这种否定信号，这里统一匹配**显式打开危险行为**的正向信号（开发者必须主动写、且没有安全用途）：Python(lxml) 的 `resolve_entities=True` / `no_network=False`；Java(JAXP) 的 `setExpandEntityReferences(true)` 与把 `load-external-dtd` / `external-general-entities` feature 设为 `true`（安全方向是设为 `false`、或把 `disallow-doctype-decl` 设为 `true`，这些都不会命中）；PHP(libxml) 的 `LIBXML_NOENT` 标志与 `libxml_disable_entity_loader(false)`；JS/TS(libxmljs) 的 `noent: true` 解析选项。Go 未覆盖，因为 `encoding/xml` 默认不解析外部实体，没有对等的危险开关 |
 | `CG-030` | Path Traversal | high | JS / TS / Python / Go / Java / PHP | 文件路径操作 + 动态路径拼接；Go 侧匹配 `os` / `ioutil` 文件函数的拼接或 `fmt.Sprintf` 路径；Java 侧匹配 `new File/FileInputStream/...` 构造器与 `Files`/`Paths` 静态方法的拼接或 `String.format` 路径，`normalize()`/`getCanonicalPath()` + `startsWith` 视为已消毒；PHP 侧匹配 `file_get_contents`/`file_put_contents`/`fopen`/`readfile` 等全局函数（PHP 无接收者，类似 Python）的拼接或插值路径 |
 | `CG-031` | Arbitrary File Read/Write | high | JS / TS / Python / Go / Java / PHP | `readFile` / `writeFile` / `open` 等操作直接引用 `req` / `params` / `query` / `args`；Go 侧匹配 `os.Open/OpenFile/Create/ReadFile/WriteFile` 引用 `r.URL.Query`/`r.FormValue`/`mux.Vars`/`os.Args` 等；Java 侧匹配 `new File(...)` 或 `Files`/`Paths` 静态方法引用 `getParameter`/`getHeader`/`getQueryString`；PHP 侧匹配 `file_get_contents`/`file_put_contents`/`fopen`/`readfile` 引用 `$_GET`/`$_POST`/`$_REQUEST`/`$_COOKIE` |
 | `CG-040` | Sensitive Data Exposure | medium | JS / TS / Python / Go / Java / PHP | 日志调用中出现 `password` / `token` / `secret` / PII 模式；Go 侧匹配 `log`/`logrus`/`zap`/`zerolog` 等对象的日志方法；Java 侧匹配 `logger`/`log`/`System.out`/`System.err` 的日志方法；PHP 侧匹配 `error_log`/`syslog` 裸函数或 `log`/`logger` 接收者（如 Laravel `Log::`、Monolog `$logger->`）的日志方法 |
@@ -278,7 +279,7 @@ rules:
 当前规则系统最重要的限制有：
 
 1. **Go / Java / PHP 覆盖范围**
-   - Go 支持 `CG-001` / `CG-002` / `CG-020` / `CG-021` / `CG-022` / `CG-023` / `CG-025` / `CG-030` / `CG-031` / `CG-040` / `CG-050` / `CG-060` 共 12 条；Java 在此基础上再加 `CG-010` / `CG-041` 共 14 条；PHP 在 Go 的基础上再加 `CG-003` / `CG-024` / `CG-026` / `CG-041` 共 16 条。`CG-011`（DOM-based XSS）仍是 JS/TS 独有，因为它需要浏览器 DOM 环境；`CG-024`（NoSQL 注入）与 `CG-026`（JWT 签名绕过）只覆盖 JS/TS/Python/PHP，因为它们针对的分别是 MongoDB 驱动、常见 JWT 库特定的调用形态，Go/Java 没有清晰、低误报的对等模式。
+   - Go 支持 `CG-001` / `CG-002` / `CG-020` / `CG-021` / `CG-022` / `CG-023` / `CG-025` / `CG-030` / `CG-031` / `CG-040` / `CG-050` / `CG-060` 共 12 条；Java 在此基础上再加 `CG-010` / `CG-041` / `CG-070` 共 15 条；PHP 在 Go 的基础上再加 `CG-003` / `CG-024` / `CG-026` / `CG-041` / `CG-070` 共 17 条。`CG-011`（DOM-based XSS）仍是 JS/TS 独有，因为它需要浏览器 DOM 环境；`CG-024`（NoSQL 注入）与 `CG-026`（JWT 签名绕过）只覆盖 JS/TS/Python/PHP，因为它们针对的分别是 MongoDB 驱动、常见 JWT 库特定的调用形态，Go/Java 没有清晰、低误报的对等模式；`CG-070`（XXE）覆盖 JS/TS/Python/Java/PHP，Go 未覆盖，因为 `encoding/xml` 默认不解析外部实体、没有对等的危险开关。
    - Stage 1 无数据流分析：`query := fmt.Sprintf(...)` 两步写法靠 “Sprintf 组装 SQL” 启发式命中。内联嵌套时（如 `db.Query(fmt.Sprintf(...))`、嵌套的 Go struct 字面量 `tls.Config` 嵌在 `http.Transport` 里）同一条规则本会同时命中外层与内层调用；`runRules()` 现在会在同一文件内、同一 ruleId 下，抑制完全被另一条命中"包含"的内层重复项，只保留外层这条更完整的 finding——不影响真正的两步模式（Sprintf 与 Query 是两条独立语句，不构成嵌套）。
 2. **`rules test` 是 Stage 1-only smoke path**
    - 用于验证 custom rules 命中情况，不覆盖 Stage 2。

@@ -48,3 +48,8 @@ function goToLogin(res: any) {
 function verifyToken(jwt: any, token: string, secret: string) {
   return jwt.verify(token, secret, { algorithms: ['HS256'] });
 }
+
+// Safe: entity substitution disabled
+function parseXml(libxmljs: any, data: string) {
+  return libxmljs.parseXml(data, { noent: false });
+}

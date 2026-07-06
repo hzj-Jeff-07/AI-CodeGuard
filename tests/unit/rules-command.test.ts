@@ -64,7 +64,7 @@ describe('rules command', () => {
 
     expect(output.log).toHaveBeenCalledWith('  AI-CodeGuard Rules');
     expect(output.log).toHaveBeenCalledWith(expect.stringContaining('CG-001'));
-    expect(output.log).toHaveBeenCalledWith(expect.stringContaining('Total: 18 rules'));
+    expect(output.log).toHaveBeenCalledWith(expect.stringContaining('Total: 19 rules'));
   });
 
   it('validates a custom rule file', async () => {

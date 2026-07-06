@@ -46,3 +46,8 @@ function goNext() {
 function verifyToken($jwt, $key) {
     return JWT::decode($jwt, $key, ['none']);
 }
+
+// Vulnerable: XML External Entity (CG-070) — entity substitution flag
+function parseXml($data) {
+    return simplexml_load_string($data, "SimpleXMLElement", LIBXML_NOENT);
+}

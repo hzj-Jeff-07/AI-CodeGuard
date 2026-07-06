@@ -52,3 +52,8 @@ def go_to_login():
 # Safe: restricted to a specific signing algorithm
 def verify_token(jwt, token, key):
     return jwt.decode(token, key, algorithms=["HS256"])
+
+# Safe: external entities not resolved, no network access
+def parse_xml(etree, data):
+    parser = etree.XMLParser(resolve_entities=False, no_network=True)
+    return etree.fromstring(data, parser)

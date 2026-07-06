@@ -54,3 +54,8 @@ function goNext(res: any, req: any) {
 function verifyToken(jwt: any, token: string, secret: string) {
   return jwt.verify(token, secret, { algorithms: ['none'] });
 }
+
+// Vulnerable: XML External Entity (CG-070) — entity substitution enabled
+function parseXml(libxmljs: any, data: string) {
+  return libxmljs.parseXml(data, { noent: true });
+}
