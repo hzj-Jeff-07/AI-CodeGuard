@@ -1022,6 +1022,16 @@ describe('CG-021: Weak Cryptography — ECB mode', () => {
     expect(findByRule(results, 'CG-021').length).toBe(0);
   });
 
+  it('detects pycryptodome DES.new (weak cipher module)', async () => {
+    const results = await scanCode('cipher = DES.new(key, DES.MODE_CBC)', 'python');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects pycryptodome ARC4.new (RC4)', async () => {
+    const results = await scanCode('cipher = ARC4.new(key)', 'python');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
   it('detects Java Cipher.getInstance("AES/ECB/PKCS5Padding")', async () => {
     const source = `class T {
   void f() throws Exception {

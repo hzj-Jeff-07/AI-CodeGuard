@@ -90,6 +90,15 @@ function usesDeprecatedCipher(call: CallInfo): boolean {
   return call.name === 'createCipher' || call.name === 'createDecipher';
 }
 
+// pycryptodome puts the algorithm in the module name (`DES.new(...)`), so the
+// weak-algorithm *string* check can't see it. DES (56-bit), ARC4 (RC4), and
+// Blowfish (64-bit block, Sweet32) are all broken/legacy.
+const WEAK_CIPHER_MODULES_PY = ['DES', 'ARC4', 'Blowfish'];
+
+function usesWeakPyCipher(call: CallInfo): boolean {
+  return call.name === 'new' && call.object !== null && WEAK_CIPHER_MODULES_PY.includes(call.object);
+}
+
 // Each language's weak-crypto-call matcher, keyed by language so adding a new
 // one is a single map entry instead of another branch in an if/else chain.
 // `javascript`/`typescript`/`python` share the default (no entry needed).
@@ -126,9 +135,11 @@ export const weakCryptography: BuiltInRule = {
     if (!call) return null;
 
     const matcher = WEAK_CRYPTO_MATCHERS[ctx.language] ?? DEFAULT_WEAK_CRYPTO_MATCHER;
-    // A weak algorithm (per-language matcher), the ECB mode, or Node's
-    // deprecated password-based cipher (both language-agnostic) is enough to flag.
-    if (!matcher(call) && !usesEcbMode(call) && !usesDeprecatedCipher(call)) return null;
+    // A weak algorithm (per-language matcher), the ECB mode, Node's deprecated
+    // password-based cipher, or a pycryptodome weak-cipher module (Python) is
+    // enough to flag.
+    const isWeakPyCipher = ctx.language === 'python' && usesWeakPyCipher(call);
+    if (!matcher(call) && !usesEcbMode(call) && !usesDeprecatedCipher(call) && !isWeakPyCipher) return null;
 
     return {
       file: ctx.file,
