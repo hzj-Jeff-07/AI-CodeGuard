@@ -77,4 +77,9 @@ public class Stretch {
     public Pattern emailPattern() {
         return Pattern.compile("^([a-zA-Z0-9]+)+@");
     }
+
+    // Vulnerable: Open Redirect (CG-025) — redirect target from request parameter
+    public void goNext(HttpServletRequest request, HttpServletResponse response) throws Exception {
+        response.sendRedirect(request.getParameter("next"));
+    }
 }

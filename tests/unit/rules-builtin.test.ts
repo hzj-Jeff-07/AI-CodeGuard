@@ -519,6 +519,96 @@ describe('CG-024: NoSQL Injection (PHP)', () => {
   });
 });
 
+// ── CG-025: Open Redirect ─────────────────────────────────────────
+
+describe('CG-025: Open Redirect', () => {
+  it('detects res.redirect with a query parameter', async () => {
+    const results = await scanCode('res.redirect(req.query.url)');
+    expect(findByRule(results, 'CG-025').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores res.redirect with a static path', async () => {
+    const results = await scanCode('res.redirect("/login")');
+    expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+
+  it('ignores an unrelated res.status call', async () => {
+    const results = await scanCode('res.status(req.query.code)');
+    expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+});
+
+describe('CG-025: Open Redirect (Python)', () => {
+  it("detects Flask's redirect() with a query parameter", async () => {
+    const results = await scanCode('redirect(request.args.get("next"))', 'python');
+    expect(findByRule(results, 'CG-025').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores redirect() with a static path', async () => {
+    const results = await scanCode('redirect("/login")', 'python');
+    expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+});
+
+describe('CG-025: Open Redirect (Go)', () => {
+  it('detects http.Redirect with a query parameter', async () => {
+    const source = `package main
+func f(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, r.URL.Query().Get("next"), 302)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-025').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores http.Redirect with a static path', async () => {
+    const source = `package main
+func f(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/login", 302)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+});
+
+describe('CG-025: Open Redirect (Java)', () => {
+  it('detects sendRedirect with a request parameter', async () => {
+    const source = `class T {
+  void f(HttpServletRequest request, HttpServletResponse response) throws Exception {
+    response.sendRedirect(request.getParameter("next"));
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-025').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores sendRedirect with a static path', async () => {
+    const source = `class T {
+  void f(HttpServletResponse response) throws Exception {
+    response.sendRedirect("/login");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+});
+
+describe('CG-025: Open Redirect (PHP)', () => {
+  it('detects a Location header built from $_GET', async () => {
+    const results = await scanCode('<?php header("Location: " . $_GET["next"]);', 'php');
+    expect(findByRule(results, 'CG-025').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a static Location header', async () => {
+    const results = await scanCode('<?php header("Location: /login");', 'php');
+    expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+
+  it('ignores an unrelated header() call', async () => {
+    const results = await scanCode('<?php header("Content-Type: " . $_GET["type"]);', 'php');
+    expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+});
+
 // ── CG-010: XSS ────────────────────────────────────────────────
 
 describe('CG-010: Cross-Site Scripting (XSS)', () => {

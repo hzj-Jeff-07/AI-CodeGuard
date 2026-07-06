@@ -48,3 +48,7 @@ def is_valid_email(value):
 # Vulnerable: NoSQL Injection (CG-024) - Python
 def login(users, request):
     return users.find_one(request.json)
+
+# Vulnerable: Open Redirect (CG-025) - Python
+def go_next(request):
+    return redirect(request.args.get("next"))

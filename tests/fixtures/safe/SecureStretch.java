@@ -66,4 +66,9 @@ public class SecureStretch {
     public Pattern emailPattern() {
         return Pattern.compile("^[a-zA-Z0-9]+@");
     }
+
+    // Safe: redirect target is a fixed, known path
+    public void goToLogin(HttpServletResponse response) throws Exception {
+        response.sendRedirect("/login");
+    }
 }

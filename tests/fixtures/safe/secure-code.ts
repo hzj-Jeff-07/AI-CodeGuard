@@ -38,3 +38,8 @@ function isValidEmail(input: string) {
 async function login(users: any, username: string) {
   return users.findOne({ username });
 }
+
+// Safe: redirect target is a fixed, known path
+function goToLogin(res: any) {
+  res.redirect("/login");
+}

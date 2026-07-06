@@ -36,3 +36,8 @@ function isValidEmail($value) {
 function login($collection) {
     return $collection->findOne($_POST);
 }
+
+// Vulnerable: Open Redirect (CG-025) — redirect target from $_GET
+function goNext() {
+    header("Location: " . $_GET["next"]);
+}

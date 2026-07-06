@@ -44,3 +44,7 @@ def is_valid_email(value):
 # Safe: querying by a specific validated field, not the whole request body
 def login(users, username):
     return users.find_one({"username": username})
+
+# Safe: redirect target is a fixed, known path
+def go_to_login():
+    return redirect("/login")

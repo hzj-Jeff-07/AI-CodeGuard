@@ -44,3 +44,8 @@ function isValidEmail(input: string) {
 async function login(users: any, req: any) {
   return users.findOne(req.body);
 }
+
+// Vulnerable: Open Redirect (CG-025) — redirect target from user input
+function goNext(res: any, req: any) {
+  res.redirect(req.query.next);
+}

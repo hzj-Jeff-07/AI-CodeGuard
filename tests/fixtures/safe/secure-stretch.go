@@ -50,3 +50,8 @@ func generateSessionToken() ([]byte, error) {
 
 // Safe: no nested/overlapping quantifiers
 var emailPattern = regexp.MustCompile("^[a-zA-Z0-9]+@")
+
+// Safe: redirect target is a fixed, known path
+func goToLogin(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/login", http.StatusFound)
+}

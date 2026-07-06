@@ -60,3 +60,8 @@ function isValidEmail($value) {
 function login($collection, $username) {
     return $collection->findOne(["username" => $username]);
 }
+
+// Safe: redirect target is a fixed, known path
+function goToLogin() {
+    header("Location: /login");
+}

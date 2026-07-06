@@ -18,7 +18,7 @@ What is implemented today:
 - Config loading via `.codeguard.yml` / environment variables
 - Disk cache for Stage 2 LLM results (`cache.enabled`), wired into the scan pipeline
 - GitHub composite Action (`action.yml`) plus CI / SARIF-upload workflows
-- Automated validation with **390 passing tests across 11 test files** (`npm run test:run` on 2026-07-05), plus an opt-in real-provider E2E test (skipped without `CODEGUARD_E2E=1` + API key) and a CI smoke job exercising the composite Action against the fixtures
+- Automated validation with **402 passing tests across 11 test files** (`npm run test:run` on 2026-07-06), plus an opt-in real-provider E2E test (skipped without `CODEGUARD_E2E=1` + API key) and a CI smoke job exercising the composite Action against the fixtures
 
 What is **not** complete yet:
 - npm registry publish (GitHub tags exist via the release workflow, but the package is not on npm yet)
@@ -34,7 +34,7 @@ What is **not** complete yet:
 | M3 Tree-sitter parser | Done | main parser now uses Tree-sitter-backed normalized AST |
 | M4 Custom rules runtime | Done | `rules.custom` is wired into `scan()`, and `rules validate/create/test` are available |
 | M5 GitHub / CI integration | Done | composite `action.yml`, `ci.yml`, and `security-scan.yml` (SARIF upload to Code Scanning) exist and pass |
-| M6 More languages | Done | Go: 11 rules; Java: 13 rules (adds `CG-010`, `CG-031`, `CG-041` over the Go set); PHP: 14 rules (adds `CG-021`/`CG-024`/`CG-031`/`CG-040`/`CG-041`/`CG-050` over the original MVP set) |
+| M6 More languages | Done | Go: 12 rules; Java: 14 rules (adds `CG-010`, `CG-031`, `CG-041` over the Go set); PHP: 15 rules (adds `CG-021`/`CG-024`/`CG-031`/`CG-040`/`CG-041`/`CG-050` over the original MVP set) |
 
 ### Terminology
 
@@ -126,12 +126,12 @@ Defaults: Stage 1 only (no API key needed), fails the job on critical/high findi
 
 | Language | Extensions | Rule coverage |
 |----------|------------|---------------|
-| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | all 16 built-in rules |
-| TypeScript | `.ts`, `.tsx` | all 16 built-in rules |
-| Python | `.py` | 15 of 16 built-in rules (all but `CG-011` DOM-based XSS, which needs a browser DOM) |
-| Go | `.go` | `CG-001` SQL injection, `CG-002` command injection, `CG-020` hardcoded credentials, `CG-021` weak crypto (`crypto/md5`/`sha1`/`des`/`rc4`), `CG-022` insecure randomness (`math/rand`), `CG-023` insecure regex/ReDoS (`regexp.MustCompile`/`Compile`/`MatchString`), `CG-030` path traversal, `CG-031` arbitrary file access, `CG-040` sensitive data exposure (`log`/`logrus`/`zap`), `CG-050` security misconfiguration (`InsecureSkipVerify`), `CG-060` SSRF (11 rules) |
-| Java | `.java` | `CG-001` SQL injection (incl. `String.format`), `CG-002` command injection (`Runtime.exec`, `ProcessBuilder`), `CG-010` XSS (unescaped `response.getWriter().write(...)`), `CG-020` hardcoded credentials, `CG-021` weak crypto (`MessageDigest`/`Cipher`), `CG-022` insecure randomness (`java.util.Random`), `CG-023` insecure regex/ReDoS (`Pattern.compile`), `CG-030` path traversal (`File`/`Files`/`Paths`), `CG-031` arbitrary file access, `CG-040` sensitive data exposure, `CG-041` insecure deserialization (`ObjectInputStream#readObject`), `CG-050` security misconfiguration (Spring CSRF/CORS, cookie flags), `CG-060` SSRF (`URL`, RestTemplate) (13 rules) |
-| PHP | `.php` | `CG-001` SQL injection (`mysqli_query`, PDO/mysqli `->query`, `Class::query` facades), `CG-002` command injection (`exec`, `shell_exec`, `passthru`, `proc_open`), `CG-003` eval/code injection, `CG-020` hardcoded credentials, `CG-021` weak crypto (`md5`/`sha1`/`hash()`), `CG-022` insecure randomness (`rand`/`mt_rand`), `CG-023` insecure regex/ReDoS (`preg_match`/`preg_match_all`/`preg_replace`/`preg_split`), `CG-024` NoSQL injection (whole `$_GET`/`$_POST`/`$_REQUEST` as a MongoDB filter), `CG-030` path traversal (`file_get_contents`, `fopen`, etc.), `CG-031` arbitrary file access, `CG-040` sensitive data exposure (`error_log`, `Log::`, `$logger->`), `CG-041` insecure deserialization (`unserialize`), `CG-050` security misconfiguration (curl TLS verification, `display_errors`), `CG-060` SSRF (`curl_init`) (14 rules) |
+| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | all 17 built-in rules |
+| TypeScript | `.ts`, `.tsx` | all 17 built-in rules |
+| Python | `.py` | 16 of 17 built-in rules (all but `CG-011` DOM-based XSS, which needs a browser DOM) |
+| Go | `.go` | `CG-001` SQL injection, `CG-002` command injection, `CG-020` hardcoded credentials, `CG-021` weak crypto (`crypto/md5`/`sha1`/`des`/`rc4`), `CG-022` insecure randomness (`math/rand`), `CG-023` insecure regex/ReDoS (`regexp.MustCompile`/`Compile`/`MatchString`), `CG-025` open redirect (`http.Redirect`), `CG-030` path traversal, `CG-031` arbitrary file access, `CG-040` sensitive data exposure (`log`/`logrus`/`zap`), `CG-050` security misconfiguration (`InsecureSkipVerify`), `CG-060` SSRF (12 rules) |
+| Java | `.java` | `CG-001` SQL injection (incl. `String.format`), `CG-002` command injection (`Runtime.exec`, `ProcessBuilder`), `CG-010` XSS (unescaped `response.getWriter().write(...)`), `CG-020` hardcoded credentials, `CG-021` weak crypto (`MessageDigest`/`Cipher`), `CG-022` insecure randomness (`java.util.Random`), `CG-023` insecure regex/ReDoS (`Pattern.compile`), `CG-025` open redirect (`response.sendRedirect`), `CG-030` path traversal (`File`/`Files`/`Paths`), `CG-031` arbitrary file access, `CG-040` sensitive data exposure, `CG-041` insecure deserialization (`ObjectInputStream#readObject`), `CG-050` security misconfiguration (Spring CSRF/CORS, cookie flags), `CG-060` SSRF (`URL`, RestTemplate) (14 rules) |
+| PHP | `.php` | `CG-001` SQL injection (`mysqli_query`, PDO/mysqli `->query`, `Class::query` facades), `CG-002` command injection (`exec`, `shell_exec`, `passthru`, `proc_open`), `CG-003` eval/code injection, `CG-020` hardcoded credentials, `CG-021` weak crypto (`md5`/`sha1`/`hash()`), `CG-022` insecure randomness (`rand`/`mt_rand`), `CG-023` insecure regex/ReDoS (`preg_match`/`preg_match_all`/`preg_replace`/`preg_split`), `CG-024` NoSQL injection (whole `$_GET`/`$_POST`/`$_REQUEST` as a MongoDB filter), `CG-025` open redirect (`header("Location: ...")`), `CG-030` path traversal (`file_get_contents`, `fopen`, etc.), `CG-031` arbitrary file access, `CG-040` sensitive data exposure (`error_log`, `Log::`, `$logger->`), `CG-041` insecure deserialization (`unserialize`), `CG-050` security misconfiguration (curl TLS verification, `display_errors`), `CG-060` SSRF (`curl_init`) (15 rules) |
 
 ### Built-in Rule Set
 
@@ -144,9 +144,9 @@ Defaults: Stage 1 only (no API key needed), fails the job on critical/high findi
 | Data | `CG-040`, `CG-041` | Sensitive data exposure (also Go, Java, and PHP), insecure deserialization (also Java and PHP) |
 | Config | `CG-050` | Security misconfiguration (also Go, Java, and PHP) |
 | SSRF | `CG-060` | Server-side request forgery (also Go, Java, and PHP) |
-| Other | `CG-023` | Insecure regular expression / ReDoS — nested/overlapping quantifiers vulnerable to catastrophic backtracking (all 6 languages) |
+| Other | `CG-023`, `CG-025` | Insecure regular expression / ReDoS — nested/overlapping quantifiers vulnerable to catastrophic backtracking (all 6 languages); open redirect — redirect target built from unvalidated user input (all 6 languages) |
 
-Total: **16 built-in rules**.
+Total: **17 built-in rules**.
 
 ### Custom Rules Runtime
 
@@ -328,7 +328,7 @@ Current known limitations:
 - parser uses Tree-sitter with a compatibility-preserving normalized AST layer
 - model-cost enforcement depends on a built-in pricing table; if `llm.maxCostUSD` is set for an unknown model, the scan fails fast
 - `rules test` is intentionally Stage 1-only and does not exercise Stage 2
-- Go covers 11 rules (`CG-001`/`CG-002`/`CG-020`/`CG-021`/`CG-022`/`CG-023`/`CG-030`/`CG-031`/`CG-040`/`CG-050`/`CG-060`); Java covers those plus `CG-010`/`CG-041` (13 total); PHP covers those plus `CG-003`/`CG-024`/`CG-041` (14 total). `CG-011` (DOM-based XSS) is JS/TS-only since it needs a browser DOM; `CG-024` (NoSQL injection) is JS/TS/Python/PHP-only since it targets MongoDB driver call shapes that don't have a clean equivalent in Go/Java's more strongly-typed driver APIs
+- Go covers 12 rules (`CG-001`/`CG-002`/`CG-020`/`CG-021`/`CG-022`/`CG-023`/`CG-025`/`CG-030`/`CG-031`/`CG-040`/`CG-050`/`CG-060`); Java covers those plus `CG-010`/`CG-041` (14 total); PHP covers those plus `CG-003`/`CG-024`/`CG-041` (15 total). `CG-011` (DOM-based XSS) is JS/TS-only since it needs a browser DOM; `CG-024` (NoSQL injection) is JS/TS/Python/PHP-only since it targets MongoDB driver call shapes that don't have a clean equivalent in Go/Java's more strongly-typed driver APIs
 - PHP's `CG-001` requires actual string concatenation/interpolation rather than falling back to a bare SQL-keyword sniff, because PDO's idiomatic `$pdo->prepare("SELECT ... WHERE id = ?")` takes the query as its only argument (parameters are bound via a later `execute([...])` call) — keyword-sniffing a plain literal would flag that standard safe pattern on every use
 - Stage 1 has no dataflow analysis, so a rule can independently flag both an outer call and a call nested inside it for the same underlying issue (e.g. `db.Query(fmt.Sprintf(...))`, or a Go `tls.Config` struct literal nested inside an `http.Transport` literal). `runRules()` now suppresses same-rule findings whose location is fully contained within another finding of the same rule in the same file, keeping only the outer, more-contextual one — the separate two-step pattern (`query := fmt.Sprintf(...); db.Query(query)`), where the calls aren't nested, is unaffected and still reported
 - `config.output.format` is defined, but the scan command’s CLI default still prefers text unless `--output` is explicitly provided
