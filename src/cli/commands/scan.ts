@@ -35,6 +35,7 @@ export function createScanCommand(): Command {
         .choices(['low', 'medium', 'high', 'critical', 'none'])
         .default('high'),
     )
+    .option('--no-inline-suppression', 'Ignore inline codeguard-ignore comments (report everything, to audit what they hide)')
     .option('-v, --verbose', 'Verbose output', false)
     .action(async (paths: string[], opts) => {
       try {
@@ -52,6 +53,8 @@ export function createScanCommand(): Command {
           outputFile: opts.outputFile ?? config.output.file,
           verbose: opts.verbose,
           minSeverity: opts.severity as Severity | undefined,
+          // commander maps --no-inline-suppression to inlineSuppression: false
+          inlineSuppression: opts.inlineSuppression as boolean,
         });
 
         // Exit non-zero when a reported finding meets the fail-on threshold

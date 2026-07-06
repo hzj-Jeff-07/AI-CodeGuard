@@ -41,6 +41,8 @@ export interface LLMAnalysis {
 export interface ScanResult {
   files: number;
   suspicious: number;
+  /** Count of Stage 1 findings silenced by inline `codeguard-ignore` directives. */
+  suppressed: number;
   findings: Finding[];
   /** Stage 1 findings dismissed by Stage 2 LLM analysis — kept so suppressions stay auditable */
   dismissedFindings?: Finding[];
