@@ -41,3 +41,8 @@ function login($collection) {
 function goNext() {
     header("Location: " . $_GET["next"]);
 }
+
+// Vulnerable: JWT Signature Bypass (CG-026) — accepts the "none" algorithm
+function verifyToken($jwt, $key) {
+    return JWT::decode($jwt, $key, ['none']);
+}

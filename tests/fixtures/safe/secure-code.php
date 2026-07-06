@@ -65,3 +65,8 @@ function login($collection, $username) {
 function goToLogin() {
     header("Location: /login");
 }
+
+// Safe: restricted to a specific signing algorithm
+function verifyToken($jwt, $key) {
+    return JWT::decode($jwt, $key, ['HS256']);
+}

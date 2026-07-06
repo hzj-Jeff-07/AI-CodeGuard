@@ -639,6 +639,49 @@ describe('CG-025: Open Redirect (PHP)', () => {
   });
 });
 
+// ── CG-026: JWT Signature Bypass ──────────────────────────────────
+
+describe('CG-026: JWT Signature Bypass', () => {
+  it('detects algorithms: ["none"] in jwt.verify', async () => {
+    const results = await scanCode("jwt.verify(token, secret, { algorithms: ['none'] })");
+    expect(findByRule(results, 'CG-026').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a specific safe algorithm', async () => {
+    const results = await scanCode("jwt.verify(token, secret, { algorithms: ['HS256'] })");
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
+});
+
+describe('CG-026: JWT Signature Bypass (Python)', () => {
+  it('detects verify_signature disabled in jwt.decode', async () => {
+    const results = await scanCode('jwt.decode(token, key, options={"verify_signature": False})', 'python');
+    expect(findByRule(results, 'CG-026').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a normal decode with an algorithms allowlist', async () => {
+    const results = await scanCode('jwt.decode(token, key, algorithms=["HS256"])', 'python');
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
+});
+
+describe('CG-026: JWT Signature Bypass (PHP)', () => {
+  it('detects JWT::decode allowing the none algorithm', async () => {
+    const results = await scanCode("<?php $decoded = JWT::decode($jwt, $key, ['none']);", 'php');
+    expect(findByRule(results, 'CG-026').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores JWT::decode with a specific safe algorithm', async () => {
+    const results = await scanCode("<?php $decoded = JWT::decode($jwt, $key, ['HS256']);", 'php');
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
+
+  it('ignores an unrelated decode() call mentioning none', async () => {
+    const results = await scanCode("<?php $x = Cipher::decode($data, 'none');", 'php');
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
+});
+
 // ── CG-010: XSS ────────────────────────────────────────────────
 
 describe('CG-010: Cross-Site Scripting (XSS)', () => {

@@ -52,3 +52,7 @@ def login(users, request):
 # Vulnerable: Open Redirect (CG-025) - Python
 def go_next(request):
     return redirect(request.args.get("next"))
+
+# Vulnerable: JWT Signature Bypass (CG-026) - disables signature checking
+def verify_token(jwt, token, key):
+    return jwt.decode(token, key, options={"verify_signature": False})

@@ -49,3 +49,8 @@ async function login(users: any, req: any) {
 function goNext(res: any, req: any) {
   res.redirect(req.query.next);
 }
+
+// Vulnerable: JWT Signature Bypass (CG-026) — accepts the "none" algorithm
+function verifyToken(jwt: any, token: string, secret: string) {
+  return jwt.verify(token, secret, { algorithms: ['none'] });
+}

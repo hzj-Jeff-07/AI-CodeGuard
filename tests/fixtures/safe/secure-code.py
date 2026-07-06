@@ -48,3 +48,7 @@ def login(users, username):
 # Safe: redirect target is a fixed, known path
 def go_to_login():
     return redirect("/login")
+
+# Safe: restricted to a specific signing algorithm
+def verify_token(jwt, token, key):
+    return jwt.decode(token, key, algorithms=["HS256"])

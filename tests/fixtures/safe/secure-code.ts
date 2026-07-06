@@ -43,3 +43,8 @@ async function login(users: any, username: string) {
 function goToLogin(res: any) {
   res.redirect("/login");
 }
+
+// Safe: restricted to a specific signing algorithm
+function verifyToken(jwt: any, token: string, secret: string) {
+  return jwt.verify(token, secret, { algorithms: ['HS256'] });
+}
