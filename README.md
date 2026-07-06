@@ -160,7 +160,7 @@ Defaults: Stage 1 only (no API key needed), fails the job on critical/high findi
 |----------|----------|-------|
 | Injection | `CG-001`, `CG-002`, `CG-003`, `CG-024` | SQL injection, command injection, eval/code injection, NoSQL injection; `CG-001`/`CG-002` also cover Go, Java, and PHP; `CG-003` also covers PHP; `CG-024` covers JS/TS, Python, and PHP (whole request object passed as a MongoDB filter/update document, or a dynamically-built `$where` clause) |
 | XSS | `CG-010`, `CG-011` | Reflected/DOM-based XSS; `CG-010` also covers Python (`mark_safe`/`Markup`/`render_template_string`) and Java (unescaped response writes) |
-| Auth / Crypto | `CG-020`, `CG-021`, `CG-022`, `CG-026` | Hardcoded credentials (also Go, Java, and PHP), weak cryptography (also Go, Java, and PHP), insecure randomness in a security-sensitive context (also Go, Java, and PHP), JWT signature bypass (also Python and PHP — accepting the `"none"` algorithm or explicitly disabling signature verification) |
+| Auth / Crypto | `CG-020`, `CG-021`, `CG-022`, `CG-026` | Hardcoded credentials (also Go, Java, and PHP), weak cryptography — broken algorithms (MD5/SHA1/DES/RC4) and the ECB block-cipher mode, across Go/Java/PHP too — insecure randomness in a security-sensitive context (also Go, Java, and PHP), JWT signature bypass (also Python and PHP — accepting the `"none"` algorithm or explicitly disabling signature verification) |
 | Path | `CG-030`, `CG-031` | Path traversal (also Go, Java, and PHP), arbitrary file read/write (also Go, Java, and PHP) |
 | Data | `CG-040`, `CG-041` | Sensitive data exposure (also Go, Java, and PHP), insecure deserialization (also Java and PHP) |
 | Config | `CG-050` | Security misconfiguration (also Go, Java, and PHP) |

@@ -114,7 +114,10 @@ interface FileAccessConfig {
   userInputPattern: RegExp;
 }
 
-const READ_WRITE_FN = ['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'open'];
+const READ_WRITE_FN = ['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'open',
+  // append (write) and unlink (delete) with a user-controlled path are the
+  // same arbitrary-file-access risk as read/write.
+  'appendFile', 'appendFileSync', 'unlink', 'unlinkSync'];
 
 const READ_WRITE_GO = ['Open', 'OpenFile', 'Create', 'ReadFile', 'WriteFile'];
 const READ_WRITE_OBJECTS_GO = ['os', 'ioutil'];

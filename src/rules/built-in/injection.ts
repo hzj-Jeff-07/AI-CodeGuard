@@ -344,7 +344,12 @@ export const codeInjection: BuiltInRule = {
     const call = ctx.extractCallInfo(node);
     if (!call) return null;
 
-    if (!EVAL_FUNCTIONS.includes(call.name)) return null;
+    // Python's built-in `exec(...)` runs arbitrary code just like `eval` —
+    // gated to Python and to the bare builtin (no receiver), since `exec` on
+    // a receiver, and `exec`/`shell_exec` in JS/PHP, are command execution
+    // (CG-002's job), not code injection.
+    const isPythonExec = ctx.language === 'python' && call.name === 'exec' && call.object === null;
+    if (!EVAL_FUNCTIONS.includes(call.name) && !isPythonExec) return null;
 
     const hasDynamic = node.children.some(
       c => c.type === 'template_string' || c.type === 'string_concat'

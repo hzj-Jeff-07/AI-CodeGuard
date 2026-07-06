@@ -457,6 +457,23 @@ describe('CG-003: Code Injection', () => {
     const results = await scanCode('myFunction(x)');
     expect(findByRule(results, 'CG-003').length).toBe(0);
   });
+
+  it("detects Python's built-in exec()", async () => {
+    const results = await scanCode('exec(user_input)', 'python');
+    expect(findByRule(results, 'CG-003').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not treat child_process.exec as code injection', async () => {
+    // .exec on a receiver is command execution (CG-002), not eval-style code
+    // injection — CG-003 must not claim it.
+    const results = await scanCode("child_process.exec('ls ' + dir)");
+    expect(findByRule(results, 'CG-003').length).toBe(0);
+  });
+
+  it('does not treat PHP exec() as code injection', async () => {
+    const results = await scanCode('<?php exec($cmd);', 'php');
+    expect(findByRule(results, 'CG-003').length).toBe(0);
+  });
 });
 
 // ── CG-024: NoSQL Injection ──────────────────────────────────────
@@ -957,6 +974,83 @@ describe('CG-021: Weak Cryptography', () => {
     const results = await scanCode("crypto.createHash('sha256')");
     expect(findByRule(results, 'CG-021').length).toBe(0);
   });
+
+  it('detects the ECB cipher mode (Node aes-256-ecb)', async () => {
+    const results = await scanCode("crypto.createCipheriv('aes-256-ecb', key, null)");
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores an authenticated cipher mode (aes-256-gcm)', async () => {
+    const results = await scanCode("crypto.createCipheriv('aes-256-gcm', key, iv)");
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
+
+  it('does not flag an incidental "ecb" outside a cipher call', async () => {
+    const results = await scanCode("logger.info('feedback-ecb channel ready')");
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
+
+  it("detects Node's deprecated createCipher (insecure key derivation)", async () => {
+    const results = await scanCode("crypto.createCipher('aes-256-cbc', password)");
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not flag the secure createCipheriv', async () => {
+    const results = await scanCode("crypto.createCipheriv('aes-256-cbc', key, iv)");
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
+
+  it("detects Python hashlib.new('md5')", async () => {
+    const results = await scanCode("h = hashlib.new('md5', data)", 'python');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("ignores Python hashlib.new('sha256')", async () => {
+    const results = await scanCode("h = hashlib.new('sha256', data)", 'python');
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
+});
+
+describe('CG-021: Weak Cryptography — ECB mode', () => {
+  it('detects pycryptodome AES.new(..., AES.MODE_ECB)', async () => {
+    const results = await scanCode('cipher = AES.new(key, AES.MODE_ECB)', 'python');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores AES.MODE_GCM', async () => {
+    const results = await scanCode('cipher = AES.new(key, AES.MODE_GCM, nonce)', 'python');
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
+
+  it('detects pycryptodome DES.new (weak cipher module)', async () => {
+    const results = await scanCode('cipher = DES.new(key, DES.MODE_CBC)', 'python');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects pycryptodome ARC4.new (RC4)', async () => {
+    const results = await scanCode('cipher = ARC4.new(key)', 'python');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects Java Cipher.getInstance("AES/ECB/PKCS5Padding")', async () => {
+    const source = `class T {
+  void f() throws Exception {
+    Cipher c = Cipher.getInstance("AES/ECB/PKCS5Padding");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects PHP openssl_encrypt with an -ecb algorithm', async () => {
+    const results = await scanCode("<?php $x = openssl_encrypt($data, 'aes-128-ecb', $key);", 'php');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores PHP openssl_encrypt with an -gcm algorithm', async () => {
+    const results = await scanCode("<?php $x = openssl_encrypt($data, 'aes-128-gcm', $key, 0, $iv);", 'php');
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
 });
 
 describe('CG-021: Weak Cryptography (Go)', () => {
@@ -1170,6 +1264,21 @@ describe('CG-031: Arbitrary File Access', () => {
 
   it('ignores readFile when the path variable was assigned from a static literal', async () => {
     const results = await scanCode('const p = "config.json";\nfs.readFile(p);');
+    expect(findByRule(results, 'CG-031').length).toBe(0);
+  });
+
+  it('detects appendFile with a user-controlled path', async () => {
+    const results = await scanCode('fs.appendFile(req.query.path, data, cb)');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects unlink (delete) with a user-controlled path', async () => {
+    const results = await scanCode('fs.unlink(req.body.file, cb)');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores appendFile with a static path', async () => {
+    const results = await scanCode("fs.appendFile('/var/log/app.log', data, cb)");
     expect(findByRule(results, 'CG-031').length).toBe(0);
   });
 });
@@ -1408,6 +1517,21 @@ describe('CG-041: Insecure Deserialization', () => {
     const results = await scanCode('yaml.safe_load(data)', 'python');
     expect(findByRule(results, 'CG-041').length).toBe(0);
   });
+
+  it('detects dill.loads in Python', async () => {
+    const results = await scanCode('obj = dill.loads(data)', 'python');
+    expect(findByRule(results, 'CG-041').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects cloudpickle.loads in Python', async () => {
+    const results = await scanCode('obj = cloudpickle.loads(data)', 'python');
+    expect(findByRule(results, 'CG-041').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores json.loads in Python', async () => {
+    const results = await scanCode('obj = json.loads(data)', 'python');
+    expect(findByRule(results, 'CG-041').length).toBe(0);
+  });
 });
 
 describe('CG-041: Insecure Deserialization (Java)', () => {
@@ -1478,6 +1602,31 @@ describe('CG-050: Security Misconfiguration', () => {
 
   it('does not match on program root node', async () => {
     const results = await scanCode('// secure: false is just a comment\nconst x = 1;');
+    expect(findByRule(results, 'CG-050').length).toBe(0);
+  });
+
+  it('detects a raw wildcard Access-Control-Allow-Origin header', async () => {
+    const results = await scanCode("res.setHeader('Access-Control-Allow-Origin', '*')");
+    expect(findByRule(results, 'CG-050').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a specific Access-Control-Allow-Origin header', async () => {
+    const results = await scanCode("res.setHeader('Access-Control-Allow-Origin', 'https://app.example.com')");
+    expect(findByRule(results, 'CG-050').length).toBe(0);
+  });
+
+  it('detects Python ssl._create_unverified_context()', async () => {
+    const results = await scanCode('ctx = ssl._create_unverified_context()', 'python');
+    expect(findByRule(results, 'CG-050').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects Python ssl.CERT_NONE', async () => {
+    const results = await scanCode('sock = ssl.wrap_socket(s, cert_reqs=ssl.CERT_NONE)', 'python');
+    expect(findByRule(results, 'CG-050').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a hardened Python ssl context', async () => {
+    const results = await scanCode('ctx = ssl.create_default_context()', 'python');
     expect(findByRule(results, 'CG-050').length).toBe(0);
   });
 });
