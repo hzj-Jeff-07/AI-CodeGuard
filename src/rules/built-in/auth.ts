@@ -60,6 +60,25 @@ function usesWeakAlgo(call: CallInfo): boolean {
   );
 }
 
+// ECB is a weak block-cipher mode regardless of the underlying algorithm:
+// identical plaintext blocks encrypt to identical ciphertext, leaking
+// structure (the classic "ECB penguin"). The mode token shows up the same way
+// across ecosystems — `aes-256-ecb` (Node/PHP algorithm strings), `AES/ECB/...`
+// (Java transformation), `MODE_ECB` (pycryptodome) — so one language-agnostic
+// check covers them all. Gated to actual cipher calls so an incidental "ecb"
+// elsewhere can't trip it.
+const ECB_MODE = /(?:MODE_ECB|[/-]ecb)\b/i;
+const CIPHER_CALLS = new Set([
+  'createcipheriv', 'createdecipheriv', 'createcipher', 'createdecipher', // Node
+  'getinstance',                                                          // Java Cipher
+  'new',                                                                  // pycryptodome AES.new/DES.new
+  'openssl_encrypt', 'openssl_decrypt', 'mcrypt_encrypt', 'mcrypt_decrypt', // PHP
+]);
+
+function usesEcbMode(call: CallInfo): boolean {
+  return CIPHER_CALLS.has(call.name.toLowerCase()) && ECB_MODE.test(call.fullExpression);
+}
+
 // Each language's weak-crypto-call matcher, keyed by language so adding a new
 // one is a single map entry instead of another branch in an if/else chain.
 // `javascript`/`typescript`/`python` share the default (no entry needed).
@@ -87,7 +106,7 @@ export const weakCryptography: BuiltInRule = {
   severity: 'medium',
   category: 'auth',
   languages: ['javascript', 'typescript', 'python', 'go', 'java', 'php'],
-  description: 'Detects use of weak cryptographic algorithms (MD5, SHA1, DES, RC4).',
+  description: 'Detects use of weak cryptographic algorithms (MD5, SHA1, DES, RC4) or the insecure ECB block-cipher mode.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
     if (node.type !== 'function_call') return null;
@@ -96,7 +115,9 @@ export const weakCryptography: BuiltInRule = {
     if (!call) return null;
 
     const matcher = WEAK_CRYPTO_MATCHERS[ctx.language] ?? DEFAULT_WEAK_CRYPTO_MATCHER;
-    if (!matcher(call)) return null;
+    // A weak algorithm (per-language matcher) or the ECB mode (language-agnostic)
+    // is enough to flag.
+    if (!matcher(call) && !usesEcbMode(call)) return null;
 
     return {
       file: ctx.file,

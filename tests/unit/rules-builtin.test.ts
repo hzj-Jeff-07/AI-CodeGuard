@@ -957,6 +957,53 @@ describe('CG-021: Weak Cryptography', () => {
     const results = await scanCode("crypto.createHash('sha256')");
     expect(findByRule(results, 'CG-021').length).toBe(0);
   });
+
+  it('detects the ECB cipher mode (Node aes-256-ecb)', async () => {
+    const results = await scanCode("crypto.createCipheriv('aes-256-ecb', key, null)");
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores an authenticated cipher mode (aes-256-gcm)', async () => {
+    const results = await scanCode("crypto.createCipheriv('aes-256-gcm', key, iv)");
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
+
+  it('does not flag an incidental "ecb" outside a cipher call', async () => {
+    const results = await scanCode("logger.info('feedback-ecb channel ready')");
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
+});
+
+describe('CG-021: Weak Cryptography — ECB mode', () => {
+  it('detects pycryptodome AES.new(..., AES.MODE_ECB)', async () => {
+    const results = await scanCode('cipher = AES.new(key, AES.MODE_ECB)', 'python');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores AES.MODE_GCM', async () => {
+    const results = await scanCode('cipher = AES.new(key, AES.MODE_GCM, nonce)', 'python');
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
+
+  it('detects Java Cipher.getInstance("AES/ECB/PKCS5Padding")', async () => {
+    const source = `class T {
+  void f() throws Exception {
+    Cipher c = Cipher.getInstance("AES/ECB/PKCS5Padding");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects PHP openssl_encrypt with an -ecb algorithm', async () => {
+    const results = await scanCode("<?php $x = openssl_encrypt($data, 'aes-128-ecb', $key);", 'php');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores PHP openssl_encrypt with an -gcm algorithm', async () => {
+    const results = await scanCode("<?php $x = openssl_encrypt($data, 'aes-128-gcm', $key, 0, $iv);", 'php');
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
 });
 
 describe('CG-021: Weak Cryptography (Go)', () => {
