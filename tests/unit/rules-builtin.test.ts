@@ -1256,6 +1256,21 @@ describe('CG-031: Arbitrary File Access', () => {
     const results = await scanCode('const p = "config.json";\nfs.readFile(p);');
     expect(findByRule(results, 'CG-031').length).toBe(0);
   });
+
+  it('detects appendFile with a user-controlled path', async () => {
+    const results = await scanCode('fs.appendFile(req.query.path, data, cb)');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects unlink (delete) with a user-controlled path', async () => {
+    const results = await scanCode('fs.unlink(req.body.file, cb)');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores appendFile with a static path', async () => {
+    const results = await scanCode("fs.appendFile('/var/log/app.log', data, cb)");
+    expect(findByRule(results, 'CG-031').length).toBe(0);
+  });
 });
 
 describe('CG-031: Arbitrary File Access (Go)', () => {
