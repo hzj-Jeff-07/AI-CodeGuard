@@ -1527,6 +1527,31 @@ describe('CG-050: Security Misconfiguration', () => {
     const results = await scanCode('// secure: false is just a comment\nconst x = 1;');
     expect(findByRule(results, 'CG-050').length).toBe(0);
   });
+
+  it('detects a raw wildcard Access-Control-Allow-Origin header', async () => {
+    const results = await scanCode("res.setHeader('Access-Control-Allow-Origin', '*')");
+    expect(findByRule(results, 'CG-050').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a specific Access-Control-Allow-Origin header', async () => {
+    const results = await scanCode("res.setHeader('Access-Control-Allow-Origin', 'https://app.example.com')");
+    expect(findByRule(results, 'CG-050').length).toBe(0);
+  });
+
+  it('detects Python ssl._create_unverified_context()', async () => {
+    const results = await scanCode('ctx = ssl._create_unverified_context()', 'python');
+    expect(findByRule(results, 'CG-050').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects Python ssl.CERT_NONE', async () => {
+    const results = await scanCode('sock = ssl.wrap_socket(s, cert_reqs=ssl.CERT_NONE)', 'python');
+    expect(findByRule(results, 'CG-050').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a hardened Python ssl context', async () => {
+    const results = await scanCode('ctx = ssl.create_default_context()', 'python');
+    expect(findByRule(results, 'CG-050').length).toBe(0);
+  });
 });
 
 describe('CG-050: Security Misconfiguration (Go)', () => {

@@ -3,6 +3,14 @@ import type { BuiltInRule, RuleCheckContext } from '../engine.js';
 
 const MISCONFIG_PATTERNS = [
   { pattern: /cors.*origin.*['"`]\*['"`]/i, name: 'CORS wildcard origin' },
+  // The raw `Access-Control-Allow-Origin: *` header (set via res.setHeader /
+  // PHP header(...)), which the `cors(...)`-keyed pattern above doesn't see.
+  // A specific origin (`...: https://app.example.com`) is not matched.
+  { pattern: /access-control-allow-origin["'\s:,)]+\*/i, name: 'CORS wildcard origin (header)' },
+  // Python: ssl._create_unverified_context() and cert_reqs=ssl.CERT_NONE both
+  // turn off certificate validation.
+  { pattern: /_create_unverified_context\s*\(/, name: 'TLS verification disabled (Python unverified context)' },
+  { pattern: /\bCERT_NONE\b/, name: 'TLS verification disabled (Python CERT_NONE)' },
   { pattern: /secure\s*:\s*false/i, name: 'Secure flag disabled' },
   { pattern: /httpOnly\s*:\s*false/i, name: 'HttpOnly flag disabled' },
   { pattern: /sameSite\s*:\s*['"`]none['"`]/i, name: 'SameSite=None' },
