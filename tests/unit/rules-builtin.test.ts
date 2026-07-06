@@ -486,6 +486,31 @@ describe('CG-024: NoSQL Injection', () => {
     const results = await scanCode('users.find({ active: true })');
     expect(findByRule(results, 'CG-024').length).toBe(0);
   });
+
+  it('detects the whole request body passed as an update document', async () => {
+    // Mass-assignment via the *second* argument of updateOne: an attacker
+    // can inject $set/$rename operators through an unvalidated update doc,
+    // even when the filter (first argument) is perfectly safe.
+    const results = await scanCode('users.updateOne({ _id: id }, req.body)');
+    expect(findByRule(results, 'CG-024').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a static update document', async () => {
+    const results = await scanCode('users.updateOne({ _id: id }, { active: true })');
+    expect(findByRule(results, 'CG-024').length).toBe(0);
+  });
+
+  it('does not flag $where when the dynamic content belongs to an unrelated sibling field', async () => {
+    const results = await scanCode('users.find({ $where: "this.active == true", note: `hi ${x}` })');
+    expect(findByRule(results, 'CG-024').length).toBe(0);
+  });
+
+  it('reduces confidence for the ambiguous find() name without other Mongo evidence', async () => {
+    const results = await scanCode('logs.find(req.query)');
+    const findings = findByRule(results, 'CG-024');
+    expect(findings.length).toBeGreaterThanOrEqual(1);
+    expect(findings[0].confidence).toBeLessThan(0.7);
+  });
 });
 
 describe('CG-024: NoSQL Injection (Python)', () => {
@@ -535,6 +560,11 @@ describe('CG-025: Open Redirect', () => {
   it('ignores an unrelated res.status call', async () => {
     const results = await scanCode('res.status(req.query.code)');
     expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+
+  it('detects a chained res.status(...).redirect(...) call', async () => {
+    const results = await scanCode('res.status(302).redirect(req.query.url)');
+    expect(findByRule(results, 'CG-025').length).toBeGreaterThanOrEqual(1);
   });
 });
 

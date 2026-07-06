@@ -1,14 +1,11 @@
 import type { ASTNode, CallInfo, Language, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
+import { USER_INPUT_GO, USER_INPUT_JAVA, USER_INPUT_JS_PY, USER_INPUT_PHP } from '../../parser/languages/shared.js';
 
 // A redirect target built from unvalidated user input lets an attacker send
 // victims to an arbitrary external site (phishing) — the classic abuse is a
 // link to the trusted domain's own redirect endpoint with the attacker's
 // site as the destination parameter.
-const USER_INPUT_JS_PY = /\b(req\.|params\.|query\.|body\.|request\.|args\.|argv)/;
-const USER_INPUT_JAVA = /\b(getParameter|getHeader|getQueryString)\b/;
-const USER_INPUT_GO = /\b(r\.URL\.Query|r\.FormValue|r\.PostFormValue|mux\.Vars|c\.Param|c\.Query)\b/;
-const USER_INPUT_PHP = /\$_(GET|POST|REQUEST)\b/;
 
 // Flask's redirect() / Django's HttpResponseRedirect / HttpResponsePermanentRedirect are bare functions.
 const REDIRECT_FUNCTIONS_PY = ['redirect', 'HttpResponseRedirect', 'HttpResponsePermanentRedirect'];
@@ -46,8 +43,10 @@ const REDIRECT_CONFIG: Partial<Record<Language, RedirectConfig>> = {
   },
 };
 const DEFAULT_REDIRECT_CONFIG: RedirectConfig = {
+  // `.includes()`, not exact equality: a chained call like
+  // `res.status(302).redirect(url)` resolves to `call.object === "res.status(302)"`.
   isRedirectCall: call => call.object !== null
-    && REDIRECT_OBJECTS_JS.some(o => call.object!.toLowerCase() === o)
+    && REDIRECT_OBJECTS_JS.some(o => call.object!.toLowerCase().includes(o))
     && call.name === 'redirect',
   userInputPattern: USER_INPUT_JS_PY,
 };

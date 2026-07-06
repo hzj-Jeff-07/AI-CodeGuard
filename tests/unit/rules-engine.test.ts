@@ -428,7 +428,7 @@ patterns:
 // ── getAllRuleIds / getRuleById ──────────────────────────────────
 
 describe('getAllRuleIds', () => {
-  it('returns all 14 rule IDs', () => {
+  it('returns all 17 rule IDs', () => {
     const ids = getAllRuleIds();
     expect(ids.length).toBe(17);
     expect(ids).toContain('CG-001');

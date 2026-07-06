@@ -34,7 +34,7 @@ What is **not** complete yet:
 | M3 Tree-sitter parser | Done | main parser now uses Tree-sitter-backed normalized AST |
 | M4 Custom rules runtime | Done | `rules.custom` is wired into `scan()`, and `rules validate/create/test` are available |
 | M5 GitHub / CI integration | Done | composite `action.yml`, `ci.yml`, and `security-scan.yml` (SARIF upload to Code Scanning) exist and pass |
-| M6 More languages | Done | Go: 12 rules; Java: 14 rules (adds `CG-010`, `CG-031`, `CG-041` over the Go set); PHP: 15 rules (adds `CG-021`/`CG-024`/`CG-031`/`CG-040`/`CG-041`/`CG-050` over the original MVP set) |
+| M6 More languages | Done | Go: 12 rules; Java: 14 rules (adds `CG-010`, `CG-041` over the Go set); PHP: 15 rules (adds `CG-021`/`CG-022`/`CG-023`/`CG-024`/`CG-025`/`CG-031`/`CG-040`/`CG-041`/`CG-050` over the original MVP set) |
 
 ### Terminology
 

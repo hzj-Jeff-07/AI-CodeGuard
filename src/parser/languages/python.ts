@@ -1,4 +1,5 @@
 import type { LanguageAdapter, ASTNode, CallInfo } from '../../types/index.js';
+import { findOuterArgumentsStart, looksLikeReceiverExpression } from './shared.js';
 
 export const pythonAdapter: LanguageAdapter = {
   language: 'python',
@@ -8,13 +9,20 @@ export const pythonAdapter: LanguageAdapter = {
     if (node.type !== 'function_call') return null;
 
     const text = node.text;
-    const parenIndex = text.indexOf('(');
+    // Backward paren-matching handles chained calls like
+    // `db.collection('users').find(query)`, where the first '(' in the text
+    // belongs to `.collection(...)`, not the outer call itself.
+    const parenIndex = findOuterArgumentsStart(text);
     if (parenIndex === -1) return null;
 
     const callee = text.slice(0, parenIndex).trim();
     const dotIndex = callee.lastIndexOf('.');
     const name = dotIndex >= 0 ? callee.slice(dotIndex + 1) : callee;
-    const object = dotIndex >= 0 ? callee.slice(0, dotIndex) : null;
+    const rawObject = dotIndex >= 0 ? callee.slice(0, dotIndex) : null;
+    // A string/list/dict literal immediately followed by a method call
+    // (e.g. `"a,b".join(x)`) is not a meaningful receiver name for rules
+    // that pattern-match `object` — treat it as none.
+    const object = rawObject !== null && looksLikeReceiverExpression(rawObject) ? rawObject : null;
 
     return {
       name,
