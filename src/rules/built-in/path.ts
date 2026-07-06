@@ -1,7 +1,7 @@
 import type { ASTNode, CallInfo, Language, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
 import {
-  findOuterArgumentsStart,
+  getArgumentsText,
   USER_INPUT_GO,
   USER_INPUT_JAVA,
   USER_INPUT_JS_PY,
@@ -103,9 +103,8 @@ export const pathTraversal: BuiltInRule = {
 // argument is a bare identifier, check whether it was itself assigned from a
 // user-input source nearby.
 function firstArgIdentifier(fullExpression: string): string | null {
-  const argsStart = findOuterArgumentsStart(fullExpression);
-  if (argsStart === -1) return null;
-  const argsText = fullExpression.slice(argsStart + 1, fullExpression.lastIndexOf(')')).trim();
+  const argsText = getArgumentsText(fullExpression);
+  if (argsText === null) return null;
   const firstArg = argsText.split(',')[0].trim();
   return /^\$?[A-Za-z_][A-Za-z0-9_]*$/.test(firstArg) ? firstArg : null;
 }

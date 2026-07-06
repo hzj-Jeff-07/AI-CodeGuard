@@ -20,6 +20,17 @@ export function findOuterArgumentsStart(text: string): number {
   return text.indexOf('(');
 }
 
+// Returns the text between a call's own outer parentheses (its argument
+// list), trimmed, or null if there is no argument list. Centralizes the
+// `findOuterArgumentsStart` + slice-to-last-`)` step that several rules need
+// before inspecting arguments, so the backward paren-matching lives in one
+// place instead of being re-derived per rule.
+export function getArgumentsText(fullExpression: string): string | null {
+  const argsStart = findOuterArgumentsStart(fullExpression);
+  if (argsStart === -1) return null;
+  return fullExpression.slice(argsStart + 1, fullExpression.lastIndexOf(')')).trim();
+}
+
 // Splits a call's argument-list text on top-level commas only, respecting
 // nested (), [], {} and quoted strings — a naive `split(',')` breaks on an
 // object/array literal argument that contains its own commas, e.g. the

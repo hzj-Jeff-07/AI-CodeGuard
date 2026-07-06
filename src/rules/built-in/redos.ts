@@ -1,6 +1,6 @@
 import type { ASTNode, CallInfo, Language, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
-import { findOuterArgumentsStart } from '../../parser/languages/shared.js';
+import { getArgumentsText } from '../../parser/languages/shared.js';
 
 // Nested/overlapping quantifiers are the classic catastrophic-backtracking
 // shape: a repeated group whose own content is itself repeatable, e.g.
@@ -26,12 +26,6 @@ const REGEX_CALL_MATCHERS: Partial<Record<Language, (call: CallInfo) => boolean>
 };
 const DEFAULT_REGEX_CALL_MATCHER = (call: CallInfo): boolean => call.object === null && call.name === 'RegExp';
 
-function extractArgsText(fullExpression: string): string | null {
-  const argsStart = findOuterArgumentsStart(fullExpression);
-  if (argsStart === -1) return null;
-  return fullExpression.slice(argsStart + 1, fullExpression.lastIndexOf(')'));
-}
-
 export const insecureRegex: BuiltInRule = {
   id: 'CG-023',
   name: 'Insecure Regular Expression (ReDoS)',
@@ -49,7 +43,7 @@ export const insecureRegex: BuiltInRule = {
     const matcher = REGEX_CALL_MATCHERS[ctx.language] ?? DEFAULT_REGEX_CALL_MATCHER;
     if (!matcher(call)) return null;
 
-    const argsText = extractArgsText(call.fullExpression);
+    const argsText = getArgumentsText(call.fullExpression);
     if (!argsText || !CATASTROPHIC_BACKTRACKING.test(argsText)) return null;
 
     return {

@@ -1,6 +1,6 @@
 import type { ASTNode, Language, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
-import { findOuterArgumentsStart, splitTopLevelArgs } from '../../parser/languages/shared.js';
+import { getArgumentsText, splitTopLevelArgs } from '../../parser/languages/shared.js';
 
 const SQL_METHODS = ['query', 'execute', 'raw', 'exec', 'prepare'];
 const SQL_METHODS_GO = ['Query', 'QueryRow', 'QueryContext', 'QueryRowContext', 'Exec', 'ExecContext', 'Prepare', 'PrepareContext'];
@@ -274,12 +274,6 @@ function findWhereValueStart(fullExpression: string, whereIndex: number): number
   return i;
 }
 
-function getArgsText(fullExpression: string): string | null {
-  const argsStart = findOuterArgumentsStart(fullExpression);
-  if (argsStart === -1) return null;
-  return fullExpression.slice(argsStart + 1, fullExpression.lastIndexOf(')')).trim();
-}
-
 export const nosqlInjection: BuiltInRule = {
   id: 'CG-024',
   name: 'NoSQL Injection',
@@ -308,7 +302,7 @@ export const nosqlInjection: BuiltInRule = {
     // Filter (arg 0) is dangerous for every method; the update/replacement
     // document (arg 1) is equally dangerous for the update-family methods —
     // `updateOne({_id}, req.body)` lets an attacker inject $set/$rename.
-    const argsText = getArgsText(call.fullExpression);
+    const argsText = getArgumentsText(call.fullExpression);
     const args = argsText !== null ? splitTopLevelArgs(argsText) : [];
     const dangerousArgIndexes = config.updateMethods.includes(call.name) ? [0, 1] : [0];
     const isWholeObjectPass = dangerousArgIndexes.some(
