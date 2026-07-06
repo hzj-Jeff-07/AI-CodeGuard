@@ -107,6 +107,16 @@ node dist/index.js scan ./src --dry-run --baseline .codeguard-baseline.json
 
 Baseline fingerprints hash the rule + file + normalized snippet — **no line numbers** — so unrelated edits that shift code up or down don't resurrect acknowledged findings, while any genuinely new finding (or an extra copy of an acknowledged one) still surfaces. The scan reports how many findings the baseline absorbed (`scan.baselined` in JSON, a summary line in text). Commit the baseline file and shrink it over time as findings get fixed.
 
+### Measuring Stage 2 triage accuracy
+
+The two-stage design's core claim — the LLM confirms real vulnerabilities and dismisses Stage 1 false positives — is measured, not assumed. `tests/corpus-triage/` labels every Stage 1 finding with a ground-truth verdict (`codeguard-real` should be confirmed, `codeguard-fp` should be dismissed — including planted FP bait like `eval('2 + 2')`, `setInterval(fn, ...)`, and timing-jitter `Math.random`). The harness runs the full production `scan()` pipeline and reports **confirm-recall**, **fp-dismiss-rate**, and **triage accuracy**:
+
+```bash
+CODEGUARD_E2E=1 ANTHROPIC_API_KEY=sk-... npm run triage
+```
+
+Offline runs validate the harness arithmetic with scripted providers; the real-model measurement is opt-in (defaults to Haiku, override with `CODEGUARD_E2E_MODEL`). An integrity check fails if the corpus and rules drift apart (unlabeled findings, or labels that no longer fire).
+
 ### Suppressing a finding
 
 Silence a specific finding with an inline comment (any language's comment syntax works). A bare directive suppresses every rule on the line; add rule IDs to scope it, and anything after the IDs is treated as a free-text reason:
