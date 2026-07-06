@@ -17,6 +17,7 @@ export function formatJSON(result: ScanResult): string {
       files: result.files,
       suspicious: result.suspicious,
       suppressed: result.suppressed,
+      baselined: result.baselined,
       duration: result.duration,
       llmCalls: result.llmCalls,
       estimatedCost: result.estimatedCost,

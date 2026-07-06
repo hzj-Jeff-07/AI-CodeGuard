@@ -10,6 +10,7 @@ function makeScanResult(findings: Finding[] = [], overrides: Partial<ScanResult>
     files: 3,
     suspicious: findings.length,
     suppressed: 0,
+    baselined: 0,
     findings,
     skipped: [],
     duration: 1234,

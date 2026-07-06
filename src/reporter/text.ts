@@ -110,6 +110,9 @@ function formatSummary(result: ScanResult): string {
     result.suppressed > 0
       ? chalk.dim(`  Suppressed by codeguard-ignore: ${result.suppressed} (re-run with --no-inline-suppression to audit them)`)
       : '',
+    result.baselined > 0
+      ? chalk.dim(`  Absorbed by baseline: ${result.baselined} (re-run without --baseline to see all findings)`)
+      : '',
     dismissedCount > 0
       ? chalk.dim(`  Dismissed by Stage 2: ${dismissedCount} (kept in JSON output under "dismissedFindings" — review if unexpected)`)
       : '',
