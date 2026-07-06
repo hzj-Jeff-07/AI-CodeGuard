@@ -9,17 +9,18 @@ import type { BuiltInRule, RuleCheckContext } from '../engine.js';
 //
 // - Python (lxml): `resolve_entities=True` substitutes external entities;
 //   `no_network=False` lets the parser fetch remote DTDs.
-// - Java (JAXP): `setExpandEntityReferences(true)` and enabling the
-//   `load-external-dtd` / `external-general-entities` features (the safe
-//   direction is setting these to `false`, or `disallow-doctype-decl` to
-//   `true`, neither of which this pattern matches).
+// - Java (JAXP/SAX): `setExpandEntityReferences(true)` and enabling the
+//   `load-external-dtd` / `external-general-entities` /
+//   `external-parameter-entities` features (the safe direction is setting
+//   these to `false`, or `disallow-doctype-decl` to `true`, neither of
+//   which this pattern matches).
 // - PHP (libxml): the `LIBXML_NOENT` flag substitutes entities;
 //   `libxml_disable_entity_loader(false)` re-enables the external entity
 //   loader that older PHP disabled as a mitigation.
 // - JS/TS (libxmljs): the `noent: true` parse option substitutes entities.
 const XXE_PATTERNS: Partial<Record<Language, RegExp>> = {
   python: /\bresolve_entities\s*=\s*True\b|\bno_network\s*=\s*False\b/,
-  java: /setExpandEntityReferences\s*\(\s*true|(?:load-external-dtd|external-general-entities)['"]\s*,\s*true/i,
+  java: /setExpandEntityReferences\s*\(\s*true|(?:load-external-dtd|external-general-entities|external-parameter-entities)['"]\s*,\s*true/i,
   php: /\bLIBXML_NOENT\b|libxml_disable_entity_loader\s*\(\s*false/i,
 };
 // JS/TS share the default (libxmljs's `noent` parse option).

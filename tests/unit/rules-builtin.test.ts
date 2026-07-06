@@ -663,12 +663,31 @@ describe('CG-026: JWT Signature Bypass', () => {
     const results = await scanCode("jwt.verify(token, secret, { algorithms: ['HS256', 'RS256'] })");
     expect(findByRule(results, 'CG-026').length).toBe(0);
   });
+
+  it('ignores an unrelated (non-JWT) call taking an algorithms list with "none"', async () => {
+    // The rule is gated to verify/decode calls, so a compression/cipher API
+    // whose `algorithms` enum happens to include a `'none'` no-op is not flagged.
+    const results = await scanCode("transport.negotiate({ algorithms: ['aes256', 'none'] })");
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
 });
 
 describe('CG-026: JWT Signature Bypass (Python)', () => {
   it('detects verify_signature disabled in jwt.decode', async () => {
     const results = await scanCode('jwt.decode(token, key, options={"verify_signature": False})', 'python');
     expect(findByRule(results, 'CG-026').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects the legacy pre-2.0 PyJWT verify=False opt-out', async () => {
+    const results = await scanCode('jwt.decode(token, key, verify=False)', 'python');
+    expect(findByRule(results, 'CG-026').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not flag an unrelated verify=False (e.g. requests TLS option)', async () => {
+    // `verify=False` on requests is a real issue, but it's a TLS-cert bypass
+    // (CG-050), not a JWT one — CG-026 must not claim it.
+    const results = await scanCode('requests.get(url, verify=False)', 'python');
+    expect(findByRule(results, 'CG-026').length).toBe(0);
   });
 
   it('ignores a normal decode with an algorithms allowlist', async () => {
@@ -690,6 +709,13 @@ describe('CG-026: JWT Signature Bypass (PHP)', () => {
 
   it('ignores an unrelated decode() call mentioning none', async () => {
     const results = await scanCode("<?php $x = Cipher::decode($data, 'none');", 'php');
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
+
+  it("ignores 'none' used as a key-id lookup when algorithms are safe", async () => {
+    // `$keys['none']` is a subscript, not the algorithms array — the safe
+    // ['HS256'] allow-list must win.
+    const results = await scanCode("<?php $decoded = JWT::decode($jwt, $keys['none'], ['HS256']);", 'php');
     expect(findByRule(results, 'CG-026').length).toBe(0);
   });
 });
@@ -740,6 +766,16 @@ describe('CG-070: XML External Entity (XXE) (Java)', () => {
     const source = `class T {
   void f(DocumentBuilderFactory dbf) {
     dbf.setExpandEntityReferences(true);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects enabling the external-parameter-entities SAX feature', async () => {
+    const source = `class T {
+  void f(SAXParserFactory spf) throws Exception {
+    spf.setFeature("http://xml.org/sax/features/external-parameter-entities", true);
   }
 }`;
     const results = await scanCode(source, 'java');
