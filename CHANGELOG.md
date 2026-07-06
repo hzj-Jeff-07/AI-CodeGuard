@@ -6,6 +6,7 @@ All notable changes to AI-CodeGuard are documented here. The format follows [Kee
 
 ### Added
 
+- **CWE labels are now surfaced in every output format, not just SARIF.** The JSON reporter adds a `cwe` field per finding (`"CWE-89"`, or `null` for a custom rule with no mapping), and the text reporter shows the CWE next to the rule ID in each finding header (`CG-001 CWE-89  SQL Injection`). Both read from the same `src/rules/cwe.ts` map that already backs the SARIF tags, so the three formats stay consistent. 3 new reporter tests.
 - **PHP rule depth: 6 → 11 rules**, closing the gap with Go/Java:
   - `CG-021` Weak Cryptography — bare `md5()`/`sha1()` calls (no algorithm argument needed — calling them at all is the signal) and `hash()` called with a weak algorithm string; `hash('sha256', ...)` is not flagged
   - `CG-040` Sensitive Data Exposure — `error_log`/`syslog` bare calls, plus `log`/`logger`-receiver method calls (`Log::error(...)` Laravel-style facades, `$logger->info(...)` Monolog-style) carrying password/token/secret/PII text

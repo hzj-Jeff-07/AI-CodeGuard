@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import type { Finding, ScanResult } from '../types/index.js';
+import { cweLabel } from '../rules/cwe.js';
 
 export function formatText(result: ScanResult): string {
   const lines: string[] = [];
@@ -40,7 +41,9 @@ function formatFinding(finding: Finding): string {
     low: chalk.blue.bold,
   }[finding.severity];
 
-  lines.push(`  ${icon} ${severityColor(finding.severity.toUpperCase())}  ${chalk.dim(finding.ruleId)}  ${chalk.bold(finding.title)}`);
+  const cwe = cweLabel(finding.ruleId);
+  const ruleTag = cwe ? `${finding.ruleId} ${cwe}` : finding.ruleId;
+  lines.push(`  ${icon} ${severityColor(finding.severity.toUpperCase())}  ${chalk.dim(ruleTag)}  ${chalk.bold(finding.title)}`);
   lines.push(`    ${chalk.cyan(finding.file)}:${finding.location.start.line}-${finding.location.end.line}`);
   lines.push('');
 

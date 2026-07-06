@@ -82,6 +82,15 @@ describe('formatJSON', () => {
     expect(parsed.findings[0].file).toBe('src/db.ts');
   });
 
+  it('includes the CWE label per finding (null for unmapped custom rules)', () => {
+    const parsed = JSON.parse(formatJSON(makeScanResult([
+      makeFinding({ ruleId: 'CG-001' }),
+      makeFinding({ id: 'f2', ruleId: 'CR-999' }),
+    ])));
+    expect(parsed.findings[0].cwe).toBe('CWE-89');
+    expect(parsed.findings[1].cwe).toBeNull();
+  });
+
   it('handles empty findings', () => {
     const result = makeScanResult();
     const parsed = JSON.parse(formatJSON(result));
@@ -236,6 +245,16 @@ describe('formatText', () => {
     const output = formatText(makeScanResult([makeFinding()]));
     expect(output).toContain('SQL Injection');
     expect(output).toContain('CG-001');
+  });
+
+  it('shows the CWE label next to the rule ID', () => {
+    const output = formatText(makeScanResult([makeFinding()]));
+    expect(output).toContain('CWE-89');
+  });
+
+  it('omits a CWE label for an unmapped custom rule', () => {
+    const output = formatText(makeScanResult([makeFinding({ ruleId: 'CR-999' })]));
+    expect(output).not.toContain('CWE-');
   });
 
   it('includes file location', () => {
