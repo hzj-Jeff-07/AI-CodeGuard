@@ -19,6 +19,8 @@ export interface ScanOptions {
   outputFile?: string;
   verbose: boolean;
   minSeverity?: Severity;
+  /** Apply inline `codeguard-ignore` directives. Default true; set false to audit what they hide. */
+  inlineSuppression?: boolean;
 }
 
 export async function scan(
@@ -43,6 +45,8 @@ export async function scan(
 
   const allSuspicious: SuspiciousNode[] = [];
   const skipped: SkippedFile[] = [];
+  const suppressionEnabled = options.inlineSuppression !== false;
+  let suppressed = 0;
 
   for (const file of files) {
     const language = detectLanguage(file);
@@ -54,8 +58,14 @@ export async function scan(
     try {
       const source = await readFile(file, 'utf-8');
       const tree = await parse(source, language);
-      const suspicious = filterSuppressed(runRules(tree, rules, file), source);
-      allSuspicious.push(...suspicious);
+      const found = runRules(tree, rules, file);
+      if (suppressionEnabled) {
+        const result = filterSuppressed(found, source);
+        suppressed += result.suppressed;
+        allSuspicious.push(...result.kept);
+      } else {
+        allSuspicious.push(...found);
+      }
     } catch (error) {
       skipped.push({
         file,
@@ -103,6 +113,7 @@ export async function scan(
   const result: ScanResult = {
     files: files.length,
     suspicious: allSuspicious.length,
+    suppressed,
     findings,
     dismissedFindings,
     skipped,

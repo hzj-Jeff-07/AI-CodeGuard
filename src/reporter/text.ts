@@ -107,6 +107,9 @@ function formatSummary(result: ScanResult): string {
     `  Files scanned: ${result.files}  |  Suspicious: ${result.suspicious}  |  Duration: ${duration}s`,
     result.llmCalls > 0 ? `  LLM calls: ${result.llmCalls}  |  Estimated cost: $${result.estimatedCost.toFixed(2)}` : '',
     result.cacheHits > 0 ? `  Cache hits: ${result.cacheHits}` : '',
+    result.suppressed > 0
+      ? chalk.dim(`  Suppressed by codeguard-ignore: ${result.suppressed} (re-run with --no-inline-suppression to audit them)`)
+      : '',
     dismissedCount > 0
       ? chalk.dim(`  Dismissed by Stage 2: ${dismissedCount} (kept in JSON output under "dismissedFindings" — review if unexpected)`)
       : '',

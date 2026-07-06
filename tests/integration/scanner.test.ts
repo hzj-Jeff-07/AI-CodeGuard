@@ -86,7 +86,7 @@ describe('Scanner orchestrator', () => {
     expect(result.findings.length).toBe(0);
   });
 
-  it('honors inline codeguard-ignore directives end-to-end', async () => {
+  it('honors inline codeguard-ignore directives end-to-end and counts them', async () => {
     await withTempDir(async tempDir => {
       const file = resolve(tempDir, 'sample.js');
       await writeFile(file, [
@@ -97,8 +97,23 @@ describe('Scanner orchestrator', () => {
       ].join('\n'));
 
       const result = await runMuted(() => scan(makeOptions([file])));
-      // Only the first (unsuppressed) query survives.
+      // Only the first (unsuppressed) query survives; two were silenced.
       expect(result.findings.filter(f => f.ruleId === 'CG-001')).toHaveLength(1);
+      expect(result.suppressed).toBe(2);
+    });
+  });
+
+  it('reports suppressed findings again when inlineSuppression is disabled', async () => {
+    await withTempDir(async tempDir => {
+      const file = resolve(tempDir, 'sample.js');
+      await writeFile(file, [
+        'pool.query(`SELECT * FROM users WHERE id = ${a}`);',
+        'pool.query(`SELECT * FROM users WHERE id = ${b}`); // codeguard-ignore',
+      ].join('\n'));
+
+      const result = await runMuted(() => scan(makeOptions([file], { inlineSuppression: false })));
+      expect(result.findings.filter(f => f.ruleId === 'CG-001')).toHaveLength(2);
+      expect(result.suppressed).toBe(0);
     });
   });
 

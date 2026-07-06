@@ -104,7 +104,7 @@ Use `codeguard-ignore-next-line` to annotate the following line instead:
 subprocess.run(cmd, shell=True)
 ```
 
-Suppressed findings are dropped during Stage 1, so they never reach Stage 2 (no LLM cost).
+Suppressed findings are dropped during Stage 1, so they never reach Stage 2 (no LLM cost). The scan reports how many were suppressed (`scan.suppressed` in JSON, a summary line in text) so they aren't hidden silently — run `--no-inline-suppression` to report them all and audit what's being hidden.
 
 ### Use as GitHub Action
 

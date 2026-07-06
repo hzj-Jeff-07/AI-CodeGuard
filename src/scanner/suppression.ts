@@ -39,20 +39,38 @@ function suppresses(suppression: Suppression, ruleId: string): boolean {
   return suppression.all || suppression.ruleIds.has(ruleId.toUpperCase());
 }
 
+export interface SuppressionResult {
+  /** Findings that survived (no applicable directive). */
+  kept: SuspiciousNode[];
+  /** How many findings an inline directive silenced. */
+  suppressed: number;
+}
+
+function isSuppressed(node: SuspiciousNode, lines: string[]): boolean {
+  const lineNo = node.location.start.line; // 1-based
+  const sameLine = parse(lines[lineNo - 1], SAME_LINE_DIRECTIVE);
+  if (sameLine && suppresses(sameLine, node.ruleId)) return true;
+  const prevLine = lineNo >= 2 ? parse(lines[lineNo - 2], NEXT_LINE_DIRECTIVE) : null;
+  return prevLine !== null && suppresses(prevLine, node.ruleId);
+}
+
 /**
- * Drops findings whose flagged line carries a `codeguard-ignore` directive, or
- * whose preceding line carries a `codeguard-ignore-next-line` directive,
- * covering that finding's rule. Runs per file at Stage 1 so a suppressed
- * finding never reaches Stage 2 (no wasted LLM calls).
+ * Splits findings into those kept and a count of those silenced by a
+ * `codeguard-ignore` directive on the flagged line, or a
+ * `codeguard-ignore-next-line` directive on the preceding line, covering the
+ * finding's rule. Runs per file at Stage 1 so a suppressed finding never
+ * reaches Stage 2 (no wasted LLM calls).
  */
-export function filterSuppressed(nodes: SuspiciousNode[], source: string): SuspiciousNode[] {
+export function filterSuppressed(nodes: SuspiciousNode[], source: string): SuppressionResult {
   const lines = source.split('\n');
-  return nodes.filter(node => {
-    const lineNo = node.location.start.line; // 1-based
-    const sameLine = parse(lines[lineNo - 1], SAME_LINE_DIRECTIVE);
-    if (sameLine && suppresses(sameLine, node.ruleId)) return false;
-    const prevLine = lineNo >= 2 ? parse(lines[lineNo - 2], NEXT_LINE_DIRECTIVE) : null;
-    if (prevLine && suppresses(prevLine, node.ruleId)) return false;
-    return true;
-  });
+  const kept: SuspiciousNode[] = [];
+  let suppressed = 0;
+  for (const node of nodes) {
+    if (isSuppressed(node, lines)) {
+      suppressed += 1;
+    } else {
+      kept.push(node);
+    }
+  }
+  return { kept, suppressed };
 }
