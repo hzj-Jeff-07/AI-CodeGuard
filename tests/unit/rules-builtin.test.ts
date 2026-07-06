@@ -989,6 +989,16 @@ describe('CG-021: Weak Cryptography', () => {
     const results = await scanCode("logger.info('feedback-ecb channel ready')");
     expect(findByRule(results, 'CG-021').length).toBe(0);
   });
+
+  it("detects Node's deprecated createCipher (insecure key derivation)", async () => {
+    const results = await scanCode("crypto.createCipher('aes-256-cbc', password)");
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not flag the secure createCipheriv', async () => {
+    const results = await scanCode("crypto.createCipheriv('aes-256-cbc', key, iv)");
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
 });
 
 describe('CG-021: Weak Cryptography — ECB mode', () => {

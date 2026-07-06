@@ -79,6 +79,15 @@ function usesEcbMode(call: CallInfo): boolean {
   return CIPHER_CALLS.has(call.name.toLowerCase()) && ECB_MODE.test(call.fullExpression);
 }
 
+// Node's `createCipher`/`createDecipher` (no `iv`) are deprecated: they derive
+// the key/IV from the password with a single unsalted MD5, so their use is a
+// weakness on its own, independent of the algorithm. The `iv` variants
+// (`createCipheriv`/`createDecipheriv`) are the secure replacement and are
+// matched by exact name, not substring.
+function usesDeprecatedCipher(call: CallInfo): boolean {
+  return call.name === 'createCipher' || call.name === 'createDecipher';
+}
+
 // Each language's weak-crypto-call matcher, keyed by language so adding a new
 // one is a single map entry instead of another branch in an if/else chain.
 // `javascript`/`typescript`/`python` share the default (no entry needed).
@@ -115,9 +124,9 @@ export const weakCryptography: BuiltInRule = {
     if (!call) return null;
 
     const matcher = WEAK_CRYPTO_MATCHERS[ctx.language] ?? DEFAULT_WEAK_CRYPTO_MATCHER;
-    // A weak algorithm (per-language matcher) or the ECB mode (language-agnostic)
-    // is enough to flag.
-    if (!matcher(call) && !usesEcbMode(call)) return null;
+    // A weak algorithm (per-language matcher), the ECB mode, or Node's
+    // deprecated password-based cipher (both language-agnostic) is enough to flag.
+    if (!matcher(call) && !usesEcbMode(call) && !usesDeprecatedCipher(call)) return null;
 
     return {
       file: ctx.file,
