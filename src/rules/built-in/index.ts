@@ -5,3 +5,4 @@ export { pathTraversal, arbitraryFileAccess } from './path.js';
 export { sensitiveDataExposure, insecureDeserialization } from './data.js';
 export { securityMisconfiguration } from './config.js';
 export { ssrf } from './ssrf.js';
+export { insecureRegex } from './redos.js';

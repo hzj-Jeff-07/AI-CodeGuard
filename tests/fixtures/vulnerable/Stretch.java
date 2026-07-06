@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.util.Random;
+import java.util.regex.Pattern;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
@@ -70,5 +71,10 @@ public class Stretch {
     public String generatePasswordResetToken() {
         Random random = new Random();
         return String.valueOf(random.nextLong());
+    }
+
+    // Vulnerable: Insecure Regular Expression / ReDoS (CG-023)
+    public Pattern emailPattern() {
+        return Pattern.compile("^([a-zA-Z0-9]+)+@");
     }
 }

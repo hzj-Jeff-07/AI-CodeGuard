@@ -28,3 +28,8 @@ function add(a: number, b: number) {
 function greet(name: string) {
   return `Hello, ${name}!`;
 }
+
+// Safe: no nested/overlapping quantifiers
+function isValidEmail(input: string) {
+  return new RegExp("^[a-zA-Z0-9]+@").test(input);
+}

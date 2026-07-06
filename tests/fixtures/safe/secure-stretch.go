@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 )
 
 // Safe: credentials come from the environment
@@ -46,3 +47,6 @@ func generateSessionToken() ([]byte, error) {
 	_, err := rand.Read(b)
 	return b, err
 }
+
+// Safe: no nested/overlapping quantifiers
+var emailPattern = regexp.MustCompile("^[a-zA-Z0-9]+@")

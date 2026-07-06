@@ -38,3 +38,9 @@ import random
 
 def generate_password_reset_token():
     return random.choice(range(1000000))
+
+# Vulnerable: Insecure Regular Expression / ReDoS (CG-023) - Python
+import re
+
+def is_valid_email(value):
+    return re.compile(r"^([a-zA-Z0-9]+)+@").match(value)

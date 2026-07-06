@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"regexp"
 )
 
 // Vulnerable: Hardcoded Credentials (CG-020)
@@ -57,3 +58,6 @@ func insecureClient() *tls.Config {
 func generateSessionID() int {
 	return rand.Intn(1000000)
 }
+
+// Vulnerable: Insecure Regular Expression / ReDoS (CG-023)
+var emailPattern = regexp.MustCompile("^([a-zA-Z0-9]+)+@")

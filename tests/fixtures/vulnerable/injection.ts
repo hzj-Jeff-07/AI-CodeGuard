@@ -34,3 +34,8 @@ function processExpression(expr: string) {
 function createHandler(code: string) {
   return new Function("data", code);
 }
+
+// Vulnerable: Insecure Regular Expression / ReDoS (CG-023)
+function isValidEmail(input: string) {
+  return new RegExp("^([a-zA-Z0-9]+)+@").test(input);
+}

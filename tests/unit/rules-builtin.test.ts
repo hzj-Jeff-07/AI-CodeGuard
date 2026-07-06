@@ -1215,6 +1215,86 @@ describe('CG-050: Security Misconfiguration (PHP)', () => {
   });
 });
 
+// ── CG-023: Insecure Regular Expression (ReDoS) ─────────────────
+
+describe('CG-023: Insecure Regular Expression (ReDoS)', () => {
+  it('detects new RegExp with a nested quantifier', async () => {
+    const results = await scanCode('new RegExp("(a+)+")');
+    expect(findByRule(results, 'CG-023').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores new RegExp with a benign pattern', async () => {
+    const results = await scanCode('new RegExp("a+b")');
+    expect(findByRule(results, 'CG-023').length).toBe(0);
+  });
+});
+
+describe('CG-023: Insecure Regular Expression (ReDoS) (Python)', () => {
+  it("detects re.compile with a nested quantifier", async () => {
+    const results = await scanCode('re.compile(r"(a+)+")', 'python');
+    expect(findByRule(results, 'CG-023').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores an unrelated .split() call (not the re module)', async () => {
+    const results = await scanCode('s.split(",")', 'python');
+    expect(findByRule(results, 'CG-023').length).toBe(0);
+  });
+});
+
+describe('CG-023: Insecure Regular Expression (ReDoS) (Go)', () => {
+  it('detects regexp.MustCompile with a nested quantifier', async () => {
+    const source = `package main
+func f() {
+	regexp.MustCompile("(a+)+")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-023').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores regexp.MustCompile with a benign pattern', async () => {
+    const source = `package main
+func f() {
+	regexp.MustCompile("a+b")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-023').length).toBe(0);
+  });
+});
+
+describe('CG-023: Insecure Regular Expression (ReDoS) (Java)', () => {
+  it('detects Pattern.compile with a nested quantifier', async () => {
+    const source = `class T {
+  void f() {
+    Pattern.compile("(a+)+");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-023').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores Pattern.compile with a benign pattern', async () => {
+    const source = `class T {
+  void f() {
+    Pattern.compile("a+b");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-023').length).toBe(0);
+  });
+});
+
+describe('CG-023: Insecure Regular Expression (ReDoS) (PHP)', () => {
+  it('detects preg_match with a nested quantifier', async () => {
+    const results = await scanCode('<?php preg_match("/(a+)+/", $s);', 'php');
+    expect(findByRule(results, 'CG-023').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores preg_match with a benign pattern', async () => {
+    const results = await scanCode('<?php preg_match("/a+b/", $s);', 'php');
+    expect(findByRule(results, 'CG-023').length).toBe(0);
+  });
+});
+
 // ── CG-060: SSRF ────────────────────────────────────────────────
 
 describe('CG-060: SSRF', () => {

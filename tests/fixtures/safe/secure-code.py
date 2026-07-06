@@ -34,3 +34,9 @@ import secrets
 
 def generate_password_reset_token():
     return secrets.token_hex(16)
+
+# Safe: no nested/overlapping quantifiers
+import re
+
+def is_valid_email(value):
+    return re.compile(r"^[a-zA-Z0-9]+@").match(value)

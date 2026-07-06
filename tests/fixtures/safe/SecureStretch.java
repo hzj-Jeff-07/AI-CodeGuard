@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.util.regex.Pattern;
 import javax.servlet.http.HttpServletResponse;
 
 public class SecureStretch {
@@ -59,5 +60,10 @@ public class SecureStretch {
     public String generatePasswordResetToken() {
         SecureRandom random = new SecureRandom();
         return String.valueOf(random.nextLong());
+    }
+
+    // Safe: no nested/overlapping quantifiers
+    public Pattern emailPattern() {
+        return Pattern.compile("^[a-zA-Z0-9]+@");
     }
 }

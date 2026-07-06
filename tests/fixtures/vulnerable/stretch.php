@@ -26,3 +26,8 @@ function insecureFetch($ch, $url) {
 function generateApiKey() {
     return mt_rand(100000, 999999);
 }
+
+// Vulnerable: Insecure Regular Expression / ReDoS (CG-023)
+function isValidEmail($value) {
+    return preg_match("/^([a-zA-Z0-9]+)+@/", $value);
+}

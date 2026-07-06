@@ -50,3 +50,8 @@ function secureFetch($ch, $url) {
 function generateApiKey() {
     return bin2hex(random_bytes(16));
 }
+
+// Safe: no nested/overlapping quantifiers
+function isValidEmail($value) {
+    return preg_match("/^[a-zA-Z0-9]+@/", $value);
+}
