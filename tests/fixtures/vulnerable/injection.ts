@@ -39,3 +39,8 @@ function createHandler(code: string) {
 function isValidEmail(input: string) {
   return new RegExp("^([a-zA-Z0-9]+)+@").test(input);
 }
+
+// Vulnerable: NoSQL Injection (CG-024) — whole request body as filter
+async function login(users: any, req: any) {
+  return users.findOne(req.body);
+}

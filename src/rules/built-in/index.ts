@@ -1,4 +1,4 @@
-export { sqlInjection, commandInjection, codeInjection } from './injection.js';
+export { sqlInjection, commandInjection, codeInjection, nosqlInjection } from './injection.js';
 export { xssReflected, xssDom } from './xss.js';
 export { hardcodedCredentials, weakCryptography, insecureRandomness } from './auth.js';
 export { pathTraversal, arbitraryFileAccess } from './path.js';

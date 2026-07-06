@@ -31,3 +31,8 @@ function generateApiKey() {
 function isValidEmail($value) {
     return preg_match("/^([a-zA-Z0-9]+)+@/", $value);
 }
+
+// Vulnerable: NoSQL Injection (CG-024) — whole superglobal as filter
+function login($collection) {
+    return $collection->findOne($_POST);
+}

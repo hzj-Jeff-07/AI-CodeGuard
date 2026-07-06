@@ -6,7 +6,7 @@
 
 当前 AI-CodeGuard 的规则系统具备以下事实：
 
-- 规则来源：**15 条 TypeScript 内置规则 + 可选 YAML custom rules**
+- 规则来源：**16 条 TypeScript 内置规则 + 可选 YAML custom rules**
 - custom rules 入口：`rules.custom`
 - 命令入口：`rules --list`、`rules validate <path>`、`rules create <file>`、`rules test <rulesPath> [paths...]`
 - `rules --list` 当前**只列出 built-in rules**
@@ -14,7 +14,7 @@
 - `rules create` 负责生成最小可用 rule scaffold，支持 `--force`
 - `rules test` 复用 `scan()` 主流程，以 **Stage 1-only** 方式验证 custom rules
 - 运行方式：`scan()` 中先加载规则，再对 Tree-sitter 归一化 ASTree 执行逐节点检查
-- 支持语言：JavaScript / TypeScript（全部 15 条规则）/ Python（14 条，仅缺 `CG-011` DOM XSS）/ Go（11 条）/ Java（13 条）/ PHP（13 条，详见第 9 节）
+- 支持语言：JavaScript / TypeScript（全部 16 条规则）/ Python（15 条，仅缺 `CG-011` DOM XSS）/ Go（11 条）/ Java（13 条）/ PHP（14 条，详见第 9 节）
 
 当前**尚未实现**：
 
@@ -43,8 +43,8 @@ scan()
 ### 2.1 `loadRules()` 当前行为
 
 - `preset = none`：不加载 built-in rules
-- `preset = owasp-top-10`：当前返回全部 15 条 built-in rules
-- `preset = all`：当前也返回全部 15 条 built-in rules
+- `preset = owasp-top-10`：当前返回全部 16 条 built-in rules
+- `preset = all`：当前也返回全部 16 条 built-in rules
 - `custom`：可指向 **单个 YAML 文件**或**目录**
 - `custom` 指向目录时：递归加载其中的 `*.yml` / `*.yaml`
 - `disable = ['CG-050']`：对 **built-in + custom** 合并后的规则统一按 rule ID 过滤
@@ -105,6 +105,7 @@ custom rules 当前也共享这一能力边界，因此它们：
 | `CG-001` | SQL Injection | critical | JS / TS / Python / Go / Java / PHP | `query` / `execute` / `raw` / `exec` / `prepare` 等数据库调用，且参数中存在模板字符串或字符串拼接；Go 侧匹配 `db.Query/Exec/Prepare*` 的拼接或 `fmt.Sprintf` 组装，以及组装 SQL 的 `fmt.Sprintf` 本身；Java 侧匹配 `executeQuery/executeUpdate/prepareStatement` 等的拼接或 `String.format`，以及组装 SQL 的 `String.format` 本身；PHP 侧匹配 `mysqli_query` 等裸函数与 `->query/exec/prepare`（PDO/mysqli 对象）或 `Class::query`（如 Laravel `DB::query`）等方法调用的拼接或插值字符串——要求实际拼接/插值，不靠关键字嗅探，因为 `$pdo->prepare("... WHERE id = ?")` 这种仅含占位符的字面量是 PDO 惯用安全写法 |
 | `CG-002` | Command Injection | critical | JS / TS / Python / Go / Java / PHP | `exec` / `spawn` / `system` / `subprocess` 等命令执行调用，且参数带动态拼接；Go 侧匹配 `exec.Command(Context)` 的字符串拼接或 `fmt.Sprintf`；Java 侧匹配 `Runtime.getRuntime().exec` / `new ProcessBuilder` 的拼接或 `String.format`；PHP 侧 `exec`/`system`/`popen` 与其他语言共享的函数名列表天然覆盖，另加 `shell_exec`/`passthru`/`proc_open` |
 | `CG-003` | Code Injection (eval) | critical | JS / TS / Python / PHP | `eval` / `Function` / `setTimeout` / `setInterval` 等危险调用；PHP 的 `eval()` 在 tree-sitter-php 语法中就是普通函数调用节点，复用同一份 `EVAL_FUNCTIONS` 列表即可命中 |
+| `CG-024` | NoSQL Injection | high | JS / TS / Python / PHP | MongoDB CRUD 方法（`find`/`findOne`/`updateOne`/`deleteOne`/... ；Python 侧对应 pymongo 的 snake_case 命名 `find_one`/`update_one`/...）传入**整个**请求对象作为过滤/更新文档（如 `users.find(req.body)`）——攻击者可以提交查询操作符（`$ne`/`$gt`等）而非普通值，从而绕过如密码校验之类的过滤条件；传入请求对象的某个具体字段（如 `req.body.username`）是普通字符串值，不属于这个风险，因此只有"整个对象被直接传入"（而非其某个属性）才会命中；另外检测用字符串拼接/模板字符串动态构造的 `$where` 子句（在 MongoDB 内部以 JavaScript 求值，等价于 CG-003 的 NoSQL 版本）；Go/Java 未覆盖，因为它们的驱动 API 类型更严格，没有"直接传裸对象"这种清晰对等的调用形态 |
 | `CG-010` | Cross-Site Scripting (XSS) | high | JS / TS / Python / Java | `innerHTML` / `outerHTML` / `document.write` / `insertAdjacentHTML`；Python 侧匹配 `mark_safe`/`Markup`/`render_template_string` 传入非纯字面量参数（纯字符串字面量视为安全）；Java 侧匹配 `response.getWriter().write/print/println` 传入非纯字面量参数 |
 | `CG-011` | DOM-based XSS | high | JS / TS | 同一节点同时包含 DOM source 与 sink |
 | `CG-020` | Hardcoded Credentials | high | JS / TS / Python / Go / Java / PHP | `password` / `secret` / `token` / `api_key` 等敏感赋值模式；Go 侧覆盖 `:=` / `var` / `const` 字面量赋值；Java 侧覆盖字段与局部变量字面量赋值；PHP 的 `assignment_expression` 与 JS/TS 共用同一归一化分支，无需额外代码 |
@@ -275,7 +276,7 @@ rules:
 当前规则系统最重要的限制有：
 
 1. **Go / Java / PHP 覆盖范围**
-   - Go 支持 `CG-001` / `CG-002` / `CG-020` / `CG-021` / `CG-022` / `CG-023` / `CG-030` / `CG-031` / `CG-040` / `CG-050` / `CG-060` 共 11 条；Java 在此基础上再加 `CG-010` / `CG-041` 共 13 条；PHP 在 Go 的基础上再加 `CG-003` / `CG-041` 共 13 条。`CG-011`（DOM-based XSS）仍是 JS/TS 独有，因为它需要浏览器 DOM 环境。
+   - Go 支持 `CG-001` / `CG-002` / `CG-020` / `CG-021` / `CG-022` / `CG-023` / `CG-030` / `CG-031` / `CG-040` / `CG-050` / `CG-060` 共 11 条；Java 在此基础上再加 `CG-010` / `CG-041` 共 13 条；PHP 在 Go 的基础上再加 `CG-003` / `CG-024` / `CG-041` 共 14 条。`CG-011`（DOM-based XSS）仍是 JS/TS 独有，因为它需要浏览器 DOM 环境；`CG-024`（NoSQL 注入）只覆盖 JS/TS/Python/PHP，因为它针对的是 MongoDB 驱动特定的调用形态，Go/Java 的驱动 API 类型更严格，没有清晰的对等模式。
    - Stage 1 无数据流分析：`query := fmt.Sprintf(...)` 两步写法靠 “Sprintf 组装 SQL” 启发式命中。内联嵌套时（如 `db.Query(fmt.Sprintf(...))`、嵌套的 Go struct 字面量 `tls.Config` 嵌在 `http.Transport` 里）同一条规则本会同时命中外层与内层调用；`runRules()` 现在会在同一文件内、同一 ruleId 下，抑制完全被另一条命中"包含"的内层重复项，只保留外层这条更完整的 finding——不影响真正的两步模式（Sprintf 与 Query 是两条独立语句，不构成嵌套）。
 2. **`rules test` 是 Stage 1-only smoke path**
    - 用于验证 custom rules 命中情况，不覆盖 Stage 2。

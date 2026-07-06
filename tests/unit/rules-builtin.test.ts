@@ -459,6 +459,66 @@ describe('CG-003: Code Injection', () => {
   });
 });
 
+// ── CG-024: NoSQL Injection ──────────────────────────────────────
+
+describe('CG-024: NoSQL Injection', () => {
+  it('detects the whole request body passed as a MongoDB filter', async () => {
+    const results = await scanCode('users.find(req.body)');
+    expect(findByRule(results, 'CG-024').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects the whole request query object passed to findOne', async () => {
+    const results = await scanCode('users.findOne(req.query)');
+    expect(findByRule(results, 'CG-024').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects a dynamically-built $where clause', async () => {
+    const results = await scanCode('users.find({ $where: "this.name == \'" + name + "\'" })');
+    expect(findByRule(results, 'CG-024').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a specific field access from the request', async () => {
+    const results = await scanCode('users.find(req.body.username)');
+    expect(findByRule(results, 'CG-024').length).toBe(0);
+  });
+
+  it('ignores a static filter object', async () => {
+    const results = await scanCode('users.find({ active: true })');
+    expect(findByRule(results, 'CG-024').length).toBe(0);
+  });
+});
+
+describe('CG-024: NoSQL Injection (Python)', () => {
+  it('detects the whole request.json passed as a filter', async () => {
+    const results = await scanCode('users.find(request.json)', 'python');
+    expect(findByRule(results, 'CG-024').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("detects pymongo's snake_case find_one", async () => {
+    // Regression guard: pymongo uses snake_case (find_one), not the
+    // camelCase (findOne) the JS/PHP MongoDB drivers use.
+    const results = await scanCode('users.find_one(request.json)', 'python');
+    expect(findByRule(results, 'CG-024').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a specific field access from the request', async () => {
+    const results = await scanCode('users.find_one(request.json["id"])', 'python');
+    expect(findByRule(results, 'CG-024').length).toBe(0);
+  });
+});
+
+describe('CG-024: NoSQL Injection (PHP)', () => {
+  it('detects the whole $_GET superglobal passed as a filter', async () => {
+    const results = await scanCode('<?php $collection->find($_GET);', 'php');
+    expect(findByRule(results, 'CG-024').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a specific field access from $_GET', async () => {
+    const results = await scanCode('<?php $collection->find($_GET["id"]);', 'php');
+    expect(findByRule(results, 'CG-024').length).toBe(0);
+  });
+});
+
 // ── CG-010: XSS ────────────────────────────────────────────────
 
 describe('CG-010: Cross-Site Scripting (XSS)', () => {

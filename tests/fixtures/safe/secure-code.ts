@@ -33,3 +33,8 @@ function greet(name: string) {
 function isValidEmail(input: string) {
   return new RegExp("^[a-zA-Z0-9]+@").test(input);
 }
+
+// Safe: querying by a specific validated field, not the whole request body
+async function login(users: any, username: string) {
+  return users.findOne({ username });
+}

@@ -44,3 +44,7 @@ import re
 
 def is_valid_email(value):
     return re.compile(r"^([a-zA-Z0-9]+)+@").match(value)
+
+# Vulnerable: NoSQL Injection (CG-024) - Python
+def login(users, request):
+    return users.find_one(request.json)

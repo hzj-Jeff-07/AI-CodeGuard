@@ -55,3 +55,8 @@ function generateApiKey() {
 function isValidEmail($value) {
     return preg_match("/^[a-zA-Z0-9]+@/", $value);
 }
+
+// Safe: querying by a specific validated field, not the whole superglobal
+function login($collection, $username) {
+    return $collection->findOne(["username" => $username]);
+}

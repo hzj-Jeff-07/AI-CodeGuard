@@ -1,5 +1,6 @@
 import type { ASTNode, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
+import { findOuterArgumentsStart } from '../../parser/languages/shared.js';
 
 const SQL_METHODS = ['query', 'execute', 'raw', 'exec', 'prepare'];
 const SQL_METHODS_GO = ['Query', 'QueryRow', 'QueryContext', 'QueryRowContext', 'Exec', 'ExecContext', 'Prepare', 'PrepareContext'];
@@ -192,6 +193,82 @@ export const commandInjection: BuiltInRule = {
       snippet: ctx.getSnippet(node),
       context: ctx.getContext(node, 3),
       confidence: 0.85,
+      metadata: { method: call.name, object: call.object },
+    };
+  },
+};
+
+// JS/TS's native MongoDB driver and PHP's mongodb/mongodb library both use
+// camelCase method names; pymongo follows Python's snake_case convention
+// instead (`find_one`, not `findOne`) — only `find`/`aggregate` are spelled
+// the same in both.
+const MONGO_METHODS = ['find', 'findOne', 'findOneAndUpdate', 'findOneAndDelete', 'findOneAndReplace',
+  'updateOne', 'updateMany', 'deleteOne', 'deleteMany', 'replaceOne', 'aggregate'];
+const MONGO_METHODS_PY = ['find', 'find_one', 'find_one_and_update', 'find_one_and_delete',
+  'find_one_and_replace', 'update_one', 'update_many', 'delete_one', 'delete_many',
+  'replace_one', 'aggregate', 'count_documents'];
+
+// Passing the entire request object as a MongoDB filter/update document lets
+// an attacker submit query operators instead of a plain value — e.g.
+// `{"password": {"$ne": null}}` as the request body bypasses a password
+// check entirely. A specific field access (`req.body.username`) is an
+// ordinary string value and isn't the same risk, so only the *whole* object
+// being passed directly (not a property of it) is flagged.
+const WHOLE_REQUEST_OBJECT_JS = /^(req|request)\.(body|query|params)$/;
+const WHOLE_REQUEST_OBJECT_PY = /^request\.(json|args|form|GET|POST|data)$/;
+const WHOLE_REQUEST_OBJECT_PHP = /^\$_(GET|POST|REQUEST)$/;
+
+// `$where` executes its string as arbitrary JavaScript inside MongoDB
+// itself — string-building its content is effectively server-side code
+// injection, the NoSQL analogue of CG-003.
+const WHERE_CLAUSE = /\$where/;
+
+function firstArgText(fullExpression: string): string | null {
+  const argsStart = findOuterArgumentsStart(fullExpression);
+  if (argsStart === -1) return null;
+  const argsText = fullExpression.slice(argsStart + 1, fullExpression.lastIndexOf(')')).trim();
+  return argsText.split(',')[0].trim();
+}
+
+export const nosqlInjection: BuiltInRule = {
+  id: 'CG-024',
+  name: 'NoSQL Injection',
+  severity: 'high',
+  category: 'injection',
+  languages: ['javascript', 'typescript', 'python', 'php'],
+  description: 'Detects MongoDB queries built from an entire user-controlled request object or a dynamically-built $where clause, allowing query-operator or code injection.',
+
+  check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
+    if (node.type !== 'function_call') return null;
+
+    const call = ctx.extractCallInfo(node);
+    if (!call) return null;
+
+    const mongoMethods = ctx.language === 'python' ? MONGO_METHODS_PY : MONGO_METHODS;
+    if (call.object === null || !mongoMethods.includes(call.name)) return null;
+
+    const hasWhereInjection = WHERE_CLAUSE.test(call.fullExpression) && node.children.some(
+      c => c.type === 'template_string' || c.type === 'string_concat'
+    );
+
+    const firstArg = firstArgText(call.fullExpression);
+    const wholeObjectPattern = ctx.language === 'python' ? WHOLE_REQUEST_OBJECT_PY
+      : ctx.language === 'php' ? WHOLE_REQUEST_OBJECT_PHP
+      : WHOLE_REQUEST_OBJECT_JS;
+    const isWholeObjectPass = firstArg !== null && wholeObjectPattern.test(firstArg);
+
+    if (!hasWhereInjection && !isWholeObjectPass) return null;
+
+    return {
+      file: ctx.file,
+      language: ctx.language,
+      ruleId: 'CG-024',
+      ruleName: 'NoSQL Injection',
+      node,
+      location: node.location,
+      snippet: ctx.getSnippet(node),
+      context: ctx.getContext(node, 3),
+      confidence: 0.7,
       metadata: { method: call.name, object: call.object },
     };
   },

@@ -40,3 +40,7 @@ import re
 
 def is_valid_email(value):
     return re.compile(r"^[a-zA-Z0-9]+@").match(value)
+
+# Safe: querying by a specific validated field, not the whole request body
+def login(users, username):
+    return users.find_one({"username": username})
