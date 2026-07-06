@@ -2,18 +2,12 @@ import fg from 'fast-glob';
 import { readFile, stat } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import type { CodeGuardConfig, ScanResult, Finding, SuspiciousNode, SkippedFile, OutputFormat, Severity } from '../types/index.js';
+import { SEVERITY_RANK } from '../types/index.js';
 import { parse, detectLanguage, getSupportedExtensions } from '../parser/index.js';
 import { loadRules, runRules } from '../rules/index.js';
 import { generateReport } from '../reporter/index.js';
 import { analyzeFindings, type AnalyzeFindingsDependencies } from '../analyzer/index.js';
 import { FileCacheStore } from '../cache/index.js';
-
-const SEVERITY_RANK: Record<Severity, number> = {
-  critical: 4,
-  high: 3,
-  medium: 2,
-  low: 1,
-};
 
 export interface ScanOptions {
   paths: string[];
