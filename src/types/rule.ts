@@ -1,6 +1,19 @@
 export type Severity = 'critical' | 'high' | 'medium' | 'low';
 export type RuleCategory = 'injection' | 'xss' | 'auth' | 'path' | 'data' | 'config' | 'ssrf';
 
+// Ordinal ranking so severities can be compared (critical is most severe).
+export const SEVERITY_RANK: Record<Severity, number> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+};
+
+// True when `severity` is at least as severe as `threshold`.
+export function meetsSeverity(severity: Severity, threshold: Severity): boolean {
+  return SEVERITY_RANK[severity] >= SEVERITY_RANK[threshold];
+}
+
 export interface FunctionPattern {
   match: string[];
   on?: string[];

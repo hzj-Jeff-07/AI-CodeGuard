@@ -82,10 +82,31 @@ describe('formatJSON', () => {
     expect(parsed.findings[0].file).toBe('src/db.ts');
   });
 
+  it('includes the CWE label and MITRE URI per finding (null for unmapped custom rules)', () => {
+    const parsed = JSON.parse(formatJSON(makeScanResult([
+      makeFinding({ ruleId: 'CG-001' }),
+      makeFinding({ id: 'f2', ruleId: 'CR-999' }),
+    ])));
+    expect(parsed.findings[0].cwe).toBe('CWE-89');
+    expect(parsed.findings[0].cweUri).toBe('https://cwe.mitre.org/data/definitions/89.html');
+    expect(parsed.findings[1].cwe).toBeNull();
+    expect(parsed.findings[1].cweUri).toBeNull();
+  });
+
   it('handles empty findings', () => {
     const result = makeScanResult();
     const parsed = JSON.parse(formatJSON(result));
     expect(parsed.findings).toHaveLength(0);
+  });
+
+  it('includes a severity breakdown in the scan summary', () => {
+    const parsed = JSON.parse(formatJSON(makeScanResult([
+      makeFinding({ id: 'a', severity: 'critical' }),
+      makeFinding({ id: 'b', severity: 'high' }),
+      makeFinding({ id: 'c', severity: 'high' }),
+    ])));
+    expect(parsed.scan.totalFindings).toBe(3);
+    expect(parsed.scan.severityCounts).toEqual({ critical: 1, high: 2, medium: 0, low: 0 });
   });
 
   it('includes fix when present', () => {
@@ -236,6 +257,16 @@ describe('formatText', () => {
     const output = formatText(makeScanResult([makeFinding()]));
     expect(output).toContain('SQL Injection');
     expect(output).toContain('CG-001');
+  });
+
+  it('shows the CWE label next to the rule ID', () => {
+    const output = formatText(makeScanResult([makeFinding()]));
+    expect(output).toContain('CWE-89');
+  });
+
+  it('omits a CWE label for an unmapped custom rule', () => {
+    const output = formatText(makeScanResult([makeFinding({ ruleId: 'CR-999' })]));
+    expect(output).not.toContain('CWE-');
   });
 
   it('includes file location', () => {

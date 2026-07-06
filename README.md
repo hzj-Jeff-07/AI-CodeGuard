@@ -72,6 +72,10 @@ node dist/index.js scan ./src --fix
 node dist/index.js scan ./src --output json
 node dist/index.js scan ./src --output sarif --output-file report.sarif
 
+# Control the CI exit code: fail only on critical findings (default is `high`;
+# `--fail-on none` always exits 0, for report-only scans)
+node dist/index.js scan ./src --fail-on critical
+
 # List built-in rules
 node dist/index.js rules --list
 

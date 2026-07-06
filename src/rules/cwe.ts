@@ -31,6 +31,13 @@ export function cweForRule(ruleId: string): number | undefined {
   return CWE_BY_RULE[ruleId];
 }
 
+// Human-readable `CWE-89` label for a rule, or null if it has no mapping
+// (e.g. a custom rule). Shared by the JSON and text reporters.
+export function cweLabel(ruleId: string): string | null {
+  const cwe = CWE_BY_RULE[ruleId];
+  return cwe !== undefined ? `CWE-${cwe}` : null;
+}
+
 export function cweHelpUri(cwe: number): string {
   return `https://cwe.mitre.org/data/definitions/${cwe}.html`;
 }
