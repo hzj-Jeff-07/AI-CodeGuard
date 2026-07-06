@@ -82,12 +82,13 @@ custom rules 当前也共享这一能力边界，因此它们：
 - `getSnippet(node)`：获取当前节点文本
 - `getContext(node, lines)`：取上下文代码片段
 - `extractCallInfo(node)`：提取调用名、对象、参数、完整表达式
+- `wasAssignedFrom(varName, sourcePattern, node, lines?)`：轻量级同名变量赋值关联 —— 在 `node` 前后若干行的文本里找 `varName = <rhs>`（或 Go 的 `:=`），只把 `sourcePattern` 与该赋值的右侧文本比对（不是整个上下文窗口，避免上下文里无关位置出现同一模式造成误报）。**这不是真正的数据流分析**：解析层产出的是扁平节点列表而非嵌套 AST（见第 2 节），没有函数作用域、没有变量遮蔽处理、也不跨多跳传播 —— 只是把"两步式"模式（先赋值、再在附近调用）的文本相关性检测标准化成一个可复用、可测试的工具，而不是每条规则各写一份临时正则。CG-010（Java 的 `PrintWriter out = response.getWriter(); out.println(...)`）与 CG-031（如 `path := r.URL.Query()...; os.Open(path)`）已经用上它。
 
 当前没有：
 
-- 污点传播（taint tracking）
+- 真正的污点传播（跨函数、跨多跳的数据流追踪）
 - 跨文件符号解析
-- CFG / 数据流 / 类型系统支持
+- CFG / 类型系统支持
 
 ## 5. 当前内置规则清单
 

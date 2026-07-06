@@ -1,5 +1,6 @@
 import type { ASTNode, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
+import { findOuterArgumentsStart } from '../../parser/languages/shared.js';
 
 const PATH_FUNCTIONS_JS = ['readFile', 'readFileSync', 'writeFile', 'writeFileSync',
   'createReadStream', 'createWriteStream', 'access', 'accessSync', 'open', 'openSync',
@@ -104,6 +105,18 @@ const USER_INPUT_JAVA = /\b(getParameter|getHeader|getQueryString)\b/;
 const READ_WRITE_PHP = ['file_get_contents', 'file_put_contents', 'fopen', 'readfile'];
 const USER_INPUT_PHP = /\$_(GET|POST|REQUEST|COOKIE)\b/;
 
+// The path is passed by variable, not inline (`path := r.URL.Query...; os.Open(path)`),
+// so the direct-text check above never sees the user-input pattern. If the
+// argument is a bare identifier, check whether it was itself assigned from a
+// user-input source nearby.
+function firstArgIdentifier(fullExpression: string): string | null {
+  const argsStart = findOuterArgumentsStart(fullExpression);
+  if (argsStart === -1) return null;
+  const argsText = fullExpression.slice(argsStart + 1, fullExpression.lastIndexOf(')')).trim();
+  const firstArg = argsText.split(',')[0].trim();
+  return /^\$?[A-Za-z_][A-Za-z0-9_]*$/.test(firstArg) ? firstArg : null;
+}
+
 export const arbitraryFileAccess: BuiltInRule = {
   id: 'CG-031',
   name: 'Arbitrary File Read/Write',
@@ -137,15 +150,15 @@ export const arbitraryFileAccess: BuiltInRule = {
 
     // Check if the path argument references a source of external input
     const text = call.fullExpression;
-    let hasUserInput: boolean;
-    if (ctx.language === 'go') {
-      hasUserInput = USER_INPUT_GO.test(text);
-    } else if (ctx.language === 'java') {
-      hasUserInput = USER_INPUT_JAVA.test(text);
-    } else if (ctx.language === 'php') {
-      hasUserInput = USER_INPUT_PHP.test(text);
-    } else {
-      hasUserInput = USER_INPUT_JS_PY.test(text);
+    const userInputPattern = ctx.language === 'go' ? USER_INPUT_GO
+      : ctx.language === 'java' ? USER_INPUT_JAVA
+      : ctx.language === 'php' ? USER_INPUT_PHP
+      : USER_INPUT_JS_PY;
+
+    let hasUserInput = userInputPattern.test(text);
+    if (!hasUserInput) {
+      const argName = firstArgIdentifier(text);
+      hasUserInput = argName !== null && ctx.wasAssignedFrom(argName, userInputPattern, node);
     }
     if (!hasUserInput) return null;
 

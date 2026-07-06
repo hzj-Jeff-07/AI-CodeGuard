@@ -811,6 +811,16 @@ describe('CG-031: Arbitrary File Access', () => {
     const results = await scanCode('fs.readFile("config.json")');
     expect(findByRule(results, 'CG-031').length).toBe(0);
   });
+
+  it('detects readFile when the path variable was assigned from req.query nearby', async () => {
+    const results = await scanCode('const p = req.query.path;\nfs.readFile(p);');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores readFile when the path variable was assigned from a static literal', async () => {
+    const results = await scanCode('const p = "config.json";\nfs.readFile(p);');
+    expect(findByRule(results, 'CG-031').length).toBe(0);
+  });
 });
 
 describe('CG-031: Arbitrary File Access (Go)', () => {
@@ -843,6 +853,16 @@ func f() (*os.File, error) {
     const results = await scanCode(source, 'go');
     expect(findByRule(results, 'CG-031').length).toBe(0);
   });
+
+  it('detects os.Open when the path variable was assigned from a query param nearby', async () => {
+    const source = `package main
+func f(r *http.Request) (*os.File, error) {
+	path := r.URL.Query().Get("path")
+	return os.Open(path)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe('CG-031: Arbitrary File Access (Java)', () => {
@@ -865,6 +885,17 @@ describe('CG-031: Arbitrary File Access (Java)', () => {
     const results = await scanCode(source, 'java');
     expect(findByRule(results, 'CG-031').length).toBe(0);
   });
+
+  it('detects new File when the path variable was assigned from getParameter nearby', async () => {
+    const source = `class T {
+  File f(HttpServletRequest request) {
+    String path = request.getParameter("path");
+    return new File(path);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe('CG-031: Arbitrary File Access (PHP)', () => {
@@ -880,6 +911,13 @@ describe('CG-031: Arbitrary File Access (PHP)', () => {
       '<?php $data = file_get_contents("config.json");', 'php'
     );
     expect(findByRule(results, 'CG-031').length).toBe(0);
+  });
+
+  it('detects file_get_contents when the path variable was assigned from $_GET nearby', async () => {
+    const results = await scanCode(
+      '<?php $path = $_GET["path"];\n$data = file_get_contents($path);', 'php'
+    );
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
   });
 });
 

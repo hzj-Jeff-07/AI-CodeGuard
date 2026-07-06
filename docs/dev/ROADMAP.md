@@ -1,6 +1,6 @@
 # AI-CodeGuard 开发路线图
 
-> ⚠️ **状态更新（2026-07-05）**：本文正文写于 2026-04-12，其中关于 “cache 未接入 / GitHub Action 未完成 / 171 个测试 / 仅支持 JS-TS-Python” 的描述已过时。当前事实：Stage 2 磁盘缓存已接入 `scan()`、composite Action 与 CI / SARIF 上传 workflow 已交付且全绿、新增 `CG-022` 不安全随机数规则（覆盖全部 6 门语言，内置规则总数 14 条）、Go 已支持 10 条规则（CG-001/002/020/021/022/030/031/040/050/060）、Java 已支持 12 条规则（Go 基础上再加 CG-010/041）、PHP 已支持 12 条规则（Go 基础上再加 CG-003/041）、Python 已支持 13 条规则（仅缺 CG-011 DOM XSS）、默认模型为 `claude-sonnet-5`、测试为 375 个（11 个文件，另有 1 个 opt-in 真实 provider E2E 默认跳过）。以 `README.md` 与 `CHANGELOG.md` 为准，本文正文保留作历史快照。
+> ⚠️ **状态更新（2026-07-05）**：本文正文写于 2026-04-12，其中关于 “cache 未接入 / GitHub Action 未完成 / 171 个测试 / 仅支持 JS-TS-Python” 的描述已过时。当前事实：Stage 2 磁盘缓存已接入 `scan()`、composite Action 与 CI / SARIF 上传 workflow 已交付且全绿、新增 `CG-022` 不安全随机数规则（覆盖全部 6 门语言，内置规则总数 14 条）、Go 已支持 10 条规则（CG-001/002/020/021/022/030/031/040/050/060）、Java 已支持 12 条规则（Go 基础上再加 CG-010/041）、PHP 已支持 12 条规则（Go 基础上再加 CG-003/041）、Python 已支持 13 条规则（仅缺 CG-011 DOM XSS）、默认模型为 `claude-sonnet-5`、新增 `RuleCheckContext.wasAssignedFrom()` 轻量赋值关联工具（非真正数据流,详见 RULES.md §4）、测试为 380 个（11 个文件，另有 1 个 opt-in 真实 provider E2E 默认跳过）。以 `README.md` 与 `CHANGELOG.md` 为准，本文正文保留作历史快照。
 
 > 本路线图以当前源码为基线，截至 **2026-04-12**。它用于说明“下一步做什么”，**不是**对已上线能力的宣称。
 

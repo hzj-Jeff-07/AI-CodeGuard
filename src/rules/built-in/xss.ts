@@ -25,13 +25,8 @@ function hasOnlyStaticStringArg(fullExpression: string): boolean {
 
 // Catches the common two-step idiom `PrintWriter out = response.getWriter();
 // out.println(...)`, not just the chained one-liner
-// `response.getWriter().write(...)` — Stage 1 has no dataflow analysis, so
-// this is a textual check that the receiver was assigned from a
-// `getWriter()` call somewhere in the surrounding context.
-function wasAssignedFromGetWriter(varName: string, context: string): boolean {
-  const escaped = varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`\\b${escaped}\\s*=[^;\\n]*\\bgetWriter\\(\\)`).test(context);
-}
+// `response.getWriter().write(...)`.
+const GET_WRITER_PATTERN = /\bgetWriter\(\)/;
 
 export const xssReflected: BuiltInRule = {
   id: 'CG-010',
@@ -55,7 +50,7 @@ export const xssReflected: BuiltInRule = {
         ? call.object === null && XSS_SINK_FUNCTIONS_PY.includes(call.name)
         : call.object !== null && XSS_SINK_METHODS_JAVA.includes(call.name)
           && (call.object.includes('getWriter')
-            || wasAssignedFromGetWriter(call.object, ctx.getContext(node, 3)));
+            || ctx.wasAssignedFrom(call.object, GET_WRITER_PATTERN, node));
       if (!isSink) return null;
       if (hasOnlyStaticStringArg(call.fullExpression)) return null;
 
