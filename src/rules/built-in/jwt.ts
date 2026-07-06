@@ -5,8 +5,11 @@ import type { BuiltInRule, RuleCheckContext } from '../engine.js';
 // attacker can forge any token by setting `alg: none` and stripping the
 // signature. No legitimate configuration ever allows it; there is no
 // lower-severity legitimate use to guard against, unlike most other
-// heuristics in this file.
-const JWT_NONE_ALGORITHM = /algorithms\s*[:=]\s*\[\s*['"]none['"]/i;
+// heuristics in this file. `[^\]]*` lets `none` appear anywhere in the
+// allow-list (`['HS256', 'none']` accepts it alongside a real algorithm and
+// is just as exploitable), not only as the first element — bounded to the
+// array's own `]` so it stays linear and can't span unrelated code.
+const JWT_NONE_ALGORITHM = /algorithms\s*[:=]\s*\[[^\]]*['"]none['"]/i;
 // PyJWT's explicit, unambiguous opt-out of signature checking.
 const JWT_VERIFY_DISABLED_PY = /verify_signature['"]?\s*[:=]\s*False\b/;
 

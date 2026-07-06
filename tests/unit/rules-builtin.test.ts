@@ -651,6 +651,18 @@ describe('CG-026: JWT Signature Bypass', () => {
     const results = await scanCode("jwt.verify(token, secret, { algorithms: ['HS256'] })");
     expect(findByRule(results, 'CG-026').length).toBe(0);
   });
+
+  it('detects "none" listed alongside a real algorithm', async () => {
+    // The allow-list `['HS256', 'none']` still accepts an unsigned token, so
+    // "none" appearing anywhere in the array is exploitable — not just first.
+    const results = await scanCode("jwt.verify(token, secret, { algorithms: ['HS256', 'none'] })");
+    expect(findByRule(results, 'CG-026').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a multi-algorithm allow-list without "none"', async () => {
+    const results = await scanCode("jwt.verify(token, secret, { algorithms: ['HS256', 'RS256'] })");
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
 });
 
 describe('CG-026: JWT Signature Bypass (Python)', () => {
