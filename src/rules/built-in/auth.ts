@@ -1,4 +1,4 @@
-import type { ASTNode, SuspiciousNode } from '../../types/index.js';
+import type { ASTNode, CallInfo, Language, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
 
 // `:=` covers Go short variable declarations; `[:=]` covers JS/TS/Python/Java
@@ -53,6 +53,34 @@ const CRYPTO_OBJECTS_JAVA = ['MessageDigest', 'Cipher'];
 // the algorithm as its first argument and needs the WEAK_CRYPTO text check.
 const WEAK_CRYPTO_BARE_PHP = ['md5', 'sha1'];
 
+function usesWeakAlgo(call: CallInfo): boolean {
+  return WEAK_CRYPTO.some(algo =>
+    call.fullExpression.toLowerCase().includes(`'${algo}'`) ||
+    call.fullExpression.toLowerCase().includes(`"${algo}"`)
+  );
+}
+
+// Each language's weak-crypto-call matcher, keyed by language so adding a new
+// one is a single map entry instead of another branch in an if/else chain.
+// `javascript`/`typescript`/`python` share the default (no entry needed).
+const WEAK_CRYPTO_MATCHERS: Partial<Record<Language, (call: CallInfo) => boolean>> = {
+  go: call => call.object !== null && WEAK_CRYPTO_PACKAGES_GO.includes(call.object),
+  java: call => call.object !== null && CRYPTO_OBJECTS_JAVA.includes(call.object)
+    && call.name === 'getInstance' && usesWeakAlgo(call),
+  php: call => (call.object === null && WEAK_CRYPTO_BARE_PHP.includes(call.name))
+    || (call.object === null && call.name === 'hash' && usesWeakAlgo(call)),
+};
+const DEFAULT_WEAK_CRYPTO_MATCHER = (call: CallInfo): boolean => {
+  const isWeakCall = CRYPTO_CALLS.some(c => {
+    const parts = c.split('.');
+    if (parts.length === 2) {
+      return call.object?.includes(parts[0]) && call.name === parts[1];
+    }
+    return call.name === c;
+  });
+  return isWeakCall && usesWeakAlgo(call);
+};
+
 export const weakCryptography: BuiltInRule = {
   id: 'CG-021',
   name: 'Weak Cryptography',
@@ -67,87 +95,8 @@ export const weakCryptography: BuiltInRule = {
     const call = ctx.extractCallInfo(node);
     if (!call) return null;
 
-    if (ctx.language === 'go') {
-      if (!call.object || !WEAK_CRYPTO_PACKAGES_GO.includes(call.object)) return null;
-
-      return {
-        file: ctx.file,
-        language: ctx.language,
-        ruleId: 'CG-021',
-        ruleName: 'Weak Cryptography',
-        node,
-        location: node.location,
-        snippet: ctx.getSnippet(node),
-        context: ctx.getContext(node, 2),
-        confidence: 0.85,
-        metadata: { package: call.object, method: call.name },
-      };
-    }
-
-    if (ctx.language === 'java') {
-      const isWeakCall = call.object !== null
-        && CRYPTO_OBJECTS_JAVA.includes(call.object)
-        && call.name === 'getInstance';
-      if (!isWeakCall) return null;
-
-      const usesWeakAlgo = WEAK_CRYPTO.some(algo =>
-        call.fullExpression.toLowerCase().includes(`"${algo}"`)
-      );
-      if (!usesWeakAlgo) return null;
-
-      return {
-        file: ctx.file,
-        language: ctx.language,
-        ruleId: 'CG-021',
-        ruleName: 'Weak Cryptography',
-        node,
-        location: node.location,
-        snippet: ctx.getSnippet(node),
-        context: ctx.getContext(node, 2),
-        confidence: 0.85,
-        metadata: { method: call.name, object: call.object },
-      };
-    }
-
-    if (ctx.language === 'php') {
-      const isWeakBareCall = call.object === null && WEAK_CRYPTO_BARE_PHP.includes(call.name);
-      const isWeakHashCall = call.object === null && call.name === 'hash'
-        && WEAK_CRYPTO.some(algo =>
-          call.fullExpression.toLowerCase().includes(`'${algo}'`) ||
-          call.fullExpression.toLowerCase().includes(`"${algo}"`)
-        );
-      if (!isWeakBareCall && !isWeakHashCall) return null;
-
-      return {
-        file: ctx.file,
-        language: ctx.language,
-        ruleId: 'CG-021',
-        ruleName: 'Weak Cryptography',
-        node,
-        location: node.location,
-        snippet: ctx.getSnippet(node),
-        context: ctx.getContext(node, 2),
-        confidence: 0.85,
-        metadata: { method: call.name },
-      };
-    }
-
-    const isWeakCall = CRYPTO_CALLS.some(c => {
-      const parts = c.split('.');
-      if (parts.length === 2) {
-        return call.object?.includes(parts[0]) && call.name === parts[1];
-      }
-      return call.name === c;
-    });
-
-    if (!isWeakCall) return null;
-
-    const usesWeakAlgo = WEAK_CRYPTO.some(algo =>
-      call.fullExpression.toLowerCase().includes(`'${algo}'`) ||
-      call.fullExpression.toLowerCase().includes(`"${algo}"`)
-    );
-
-    if (!usesWeakAlgo) return null;
+    const matcher = WEAK_CRYPTO_MATCHERS[ctx.language] ?? DEFAULT_WEAK_CRYPTO_MATCHER;
+    if (!matcher(call)) return null;
 
     return {
       file: ctx.file,
@@ -159,7 +108,11 @@ export const weakCryptography: BuiltInRule = {
       snippet: ctx.getSnippet(node),
       context: ctx.getContext(node, 2),
       confidence: 0.85,
-      metadata: { method: call.name },
+      // Go's metadata key is `package` (its receiver is the crypto package
+      // itself, e.g. `md5`), everyone else's is `object`.
+      metadata: ctx.language === 'go' ? { package: call.object, method: call.name }
+        : call.object !== null ? { method: call.name, object: call.object }
+        : { method: call.name },
     };
   },
 };
@@ -184,6 +137,17 @@ const INSECURE_RAND_FNS_GO = ['Intn', 'Int31', 'Int31n', 'Int63', 'Int63n',
 const INSECURE_RAND_FNS_PY = ['random', 'randint', 'randrange', 'choice', 'sample', 'uniform'];
 const INSECURE_RAND_FNS_PHP = ['rand', 'mt_rand'];
 
+const INSECURE_RANDOM_MATCHERS: Partial<Record<Language, (call: CallInfo) => boolean>> = {
+  go: call => call.object === 'rand' && INSECURE_RAND_FNS_GO.includes(call.name),
+  // `new Random(...)`; `new SecureRandom(...)` has a different name and is
+  // intentionally not matched.
+  java: call => call.object === null && call.name === 'Random',
+  php: call => call.object === null && INSECURE_RAND_FNS_PHP.includes(call.name),
+  python: call => call.object === 'random' && INSECURE_RAND_FNS_PY.includes(call.name),
+};
+const DEFAULT_INSECURE_RANDOM_MATCHER = (call: CallInfo): boolean =>
+  call.object === 'Math' && call.name === 'random';
+
 export const insecureRandomness: BuiltInRule = {
   id: 'CG-022',
   name: 'Insecure Randomness',
@@ -198,21 +162,8 @@ export const insecureRandomness: BuiltInRule = {
     const call = ctx.extractCallInfo(node);
     if (!call) return null;
 
-    let isInsecureRandomCall: boolean;
-    if (ctx.language === 'go') {
-      isInsecureRandomCall = call.object === 'rand' && INSECURE_RAND_FNS_GO.includes(call.name);
-    } else if (ctx.language === 'java') {
-      // `new Random(...)`; `new SecureRandom(...)` has a different name and
-      // is intentionally not matched.
-      isInsecureRandomCall = call.object === null && call.name === 'Random';
-    } else if (ctx.language === 'php') {
-      isInsecureRandomCall = call.object === null && INSECURE_RAND_FNS_PHP.includes(call.name);
-    } else if (ctx.language === 'python') {
-      isInsecureRandomCall = call.object === 'random' && INSECURE_RAND_FNS_PY.includes(call.name);
-    } else {
-      isInsecureRandomCall = call.object === 'Math' && call.name === 'random';
-    }
-    if (!isInsecureRandomCall) return null;
+    const matcher = INSECURE_RANDOM_MATCHERS[ctx.language] ?? DEFAULT_INSECURE_RANDOM_MATCHER;
+    if (!matcher(call)) return null;
 
     if (!INSECURE_RANDOM_CONTEXT.test(ctx.getContext(node, 3))) return null;
 

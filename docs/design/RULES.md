@@ -90,6 +90,14 @@ custom rules 当前也共享这一能力边界，因此它们：
 - 跨文件符号解析
 - CFG / 类型系统支持
 
+### 4.1 按语言分支的收敛
+
+`path.ts`（CG-030/CG-031）、`auth.ts`（CG-021/CG-022）、`data.ts`（CG-040）、`redos.ts`（CG-023）已经把原本 `if (ctx.language === 'go') {...} else if (ctx.language === 'java') {...} else {...}` 形态的分支，改成了 `Partial<Record<Language, (call: CallInfo) => boolean>>` 形式的按语言查表：新增一门语言的匹配逻辑只需要在表里加一条 entry，而不是在多处 if/else-if 链里插入分支。`check()` 本身收窄成一次表查找 + 调用匹配函数。
+
+`xss.ts`（CG-010）和 `injection.ts`（CG-001/002/003）**有意保留**原本的 if/else 结构：
+- CG-010 的 JS/TS 分支和 Python/Java 分支要求的节点类型完全不同（前者是任意文本节点上的子串匹配，后者要求 `function_call` 节点 + `extractCallInfo`），勉强套进同一张查表反而会让两种检测策略的差异变得含糊。
+- `injection.ts` 每个语言分支除了"匹配调用"之外还有额外的语义步骤（两步式 `Sprintf`/`String.format` 组装检测、消毒模式排除等），不是单纯的"按语言选一个谓词"，硬套查表收益有限、回归风险更高。
+
 ## 5. 当前内置规则清单
 
 | 规则 ID | 名称 | 严重级别 | 语言 | 当前核心检测信号 |

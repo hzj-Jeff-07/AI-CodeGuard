@@ -1,4 +1,4 @@
-import type { ASTNode, SuspiciousNode } from '../../types/index.js';
+import type { ASTNode, CallInfo, Language, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
 import { findOuterArgumentsStart } from '../../parser/languages/shared.js';
 
@@ -14,10 +14,17 @@ const CATASTROPHIC_BACKTRACKING = /\([^()]*[+*][^()]*\)[+*]/;
 // since bare names like `match`/`search`/`split`/`compile` are common,
 // unrelated method names on other objects (e.g. String.split()). PHP's
 // `preg_*` functions and Go's `regexp` package functions have no such
-// collision risk.
-const REGEX_METHODS_PY = ['compile', 'match', 'search', 'fullmatch', 'sub', 'split', 'findall', 'finditer'];
-const REGEX_METHODS_GO = ['MustCompile', 'Compile', 'MatchString'];
-const REGEX_FUNCTIONS_PHP = ['preg_match', 'preg_match_all', 'preg_replace', 'preg_split'];
+// collision risk. Keyed by language so adding a new one is a single map
+// entry instead of another branch in an if/else chain.
+const REGEX_CALL_MATCHERS: Partial<Record<Language, (call: CallInfo) => boolean>> = {
+  python: call => call.object === 're'
+    && ['compile', 'match', 'search', 'fullmatch', 'sub', 'split', 'findall', 'finditer'].includes(call.name),
+  go: call => call.object === 'regexp' && ['MustCompile', 'Compile', 'MatchString'].includes(call.name),
+  java: call => call.object === 'Pattern' && call.name === 'compile',
+  php: call => call.object === null
+    && ['preg_match', 'preg_match_all', 'preg_replace', 'preg_split'].includes(call.name),
+};
+const DEFAULT_REGEX_CALL_MATCHER = (call: CallInfo): boolean => call.object === null && call.name === 'RegExp';
 
 function extractArgsText(fullExpression: string): string | null {
   const argsStart = findOuterArgumentsStart(fullExpression);
@@ -39,19 +46,8 @@ export const insecureRegex: BuiltInRule = {
     const call = ctx.extractCallInfo(node);
     if (!call) return null;
 
-    let isRegexCall: boolean;
-    if (ctx.language === 'python') {
-      isRegexCall = call.object === 're' && REGEX_METHODS_PY.includes(call.name);
-    } else if (ctx.language === 'go') {
-      isRegexCall = call.object === 'regexp' && REGEX_METHODS_GO.includes(call.name);
-    } else if (ctx.language === 'java') {
-      isRegexCall = call.object === 'Pattern' && call.name === 'compile';
-    } else if (ctx.language === 'php') {
-      isRegexCall = call.object === null && REGEX_FUNCTIONS_PHP.includes(call.name);
-    } else {
-      isRegexCall = call.object === null && call.name === 'RegExp';
-    }
-    if (!isRegexCall) return null;
+    const matcher = REGEX_CALL_MATCHERS[ctx.language] ?? DEFAULT_REGEX_CALL_MATCHER;
+    if (!matcher(call)) return null;
 
     const argsText = extractArgsText(call.fullExpression);
     if (!argsText || !CATASTROPHIC_BACKTRACKING.test(argsText)) return null;
