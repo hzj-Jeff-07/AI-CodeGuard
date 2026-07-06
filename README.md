@@ -12,7 +12,7 @@ What is implemented today:
 - **13 built-in OWASP-oriented rules**
 - Optional YAML custom rule loading through `rules.custom`
 - Custom rule CLI workflow through **`rules validate/create/test`**
-- Report output in **text, JSON, SARIF**
+- Report output in **text, JSON, SARIF** (SARIF rules carry CWE tags, `security-severity`, and a MITRE `helpUri`, so GitHub Code Scanning shows CWE labels and ranks alerts)
 - Stage 2 LLM analysis via **Claude** or **OpenAI** when `scan` runs without `--dry-run`
 - Optional fix suggestions through `--fix`
 - Config loading via `.codeguard.yml` / environment variables

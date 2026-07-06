@@ -179,6 +179,23 @@ describe('formatSARIF', () => {
     expect(sarif.runs[0].tool.driver.rules[0].id).toBe('CG-001');
   });
 
+  it('tags rule descriptors with CWE, security-severity, and a MITRE helpUri', () => {
+    const result = makeScanResult([makeFinding()]);
+    const rule = JSON.parse(formatSARIF(result)).runs[0].tool.driver.rules[0];
+    expect(rule.properties.tags).toContain('security');
+    expect(rule.properties.tags).toContain('external/cwe/cwe-89');
+    expect(rule.properties['security-severity']).toBe('9.0');
+    expect(rule.helpUri).toBe('https://cwe.mitre.org/data/definitions/89.html');
+  });
+
+  it('still tags a rule with no CWE mapping as security (no cwe tag / helpUri)', () => {
+    const finding = makeFinding({ ruleId: 'CR-999', title: 'Custom Rule', severity: 'medium' });
+    const rule = JSON.parse(formatSARIF(makeScanResult([finding]))).runs[0].tool.driver.rules[0];
+    expect(rule.properties.tags).toEqual(['security']);
+    expect(rule.properties['security-severity']).toBe('4.0');
+    expect(rule.helpUri).toBeUndefined();
+  });
+
   it('handles empty findings', () => {
     const sarif = JSON.parse(formatSARIF(makeScanResult()));
     expect(sarif.runs[0].results).toHaveLength(0);

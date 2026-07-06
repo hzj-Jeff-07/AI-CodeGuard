@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createRuleContext } from '../../src/rules/engine.js';
 import { getRules, loadRules, runRules, getAllRuleIds, getRuleById } from '../../src/rules/index.js';
+import { CWE_BY_RULE } from '../../src/rules/cwe.js';
 import { parse } from '../../src/parser/index.js';
 
 const FIXTURES_DIR = resolve(__dirname, '../fixtures');
@@ -433,6 +434,21 @@ describe('getAllRuleIds', () => {
     expect(ids.length).toBe(19);
     expect(ids).toContain('CG-001');
     expect(ids).toContain('CG-060');
+  });
+});
+
+describe('CWE mapping', () => {
+  it('maps every built-in rule ID to a CWE (no rule ships without one)', () => {
+    for (const id of getAllRuleIds()) {
+      expect(CWE_BY_RULE[id], `missing CWE mapping for ${id}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('has no stale CWE entries for rules that no longer exist', () => {
+    const ids = new Set(getAllRuleIds());
+    for (const id of Object.keys(CWE_BY_RULE)) {
+      expect(ids.has(id), `CWE_BY_RULE has an entry for unknown rule ${id}`).toBe(true);
+    }
   });
 });
 

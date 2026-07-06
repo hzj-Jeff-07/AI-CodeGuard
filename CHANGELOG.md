@@ -51,6 +51,7 @@ Caught by a focused code review of the CG-026/CG-070 additions above, before mer
 - **`CG-026` missed legacy PyJWT `verify=False`** (the pre-2.0 opt-out, superseded by `options={'verify_signature': False}`). Now covered — and safe to add precisely because the rule is gated to `decode` calls, so it can't be confused with requests' unrelated `verify=False` TLS-cert option (which is correctly CG-050's job, not CG-026's).
 - **`CG-070` missed the `external-parameter-entities` SAX feature** (`http://xml.org/sax/features/external-parameter-entities` set to `true`), an equally XXE-dangerous enablement alongside the already-covered `load-external-dtd` / `external-general-entities`. Added to the Java pattern.
 - 5 new regression tests covering all four fixes (435 tests total).
+- **SARIF rule descriptors now carry CWE metadata**: each rule in the SARIF `tool.driver.rules` catalog gets a `properties.tags` entry (`security` plus `external/cwe/cwe-N`), a numeric `security-severity` (9.0/7.0/4.0/2.0 for critical/high/medium/low), and a MITRE `helpUri`. GitHub Code Scanning renders the CWE tag as a label on each alert and uses `security-severity` to rank them. The rule-ID→CWE map lives in one place (`src/rules/cwe.ts`) with a guard test asserting every built-in rule has an entry (and no stale entries remain), so a new rule can't ship without a CWE. Custom rules with no mapping still get the `security` tag and a severity score, just no CWE tag or `helpUri`. 4 new tests (439 total).
 
 ### Changed
 
