@@ -6,6 +6,8 @@ All notable changes to AI-CodeGuard are documented here. The format follows [Kee
 
 ### Added
 
+- **JSON output now includes a machine-readable severity breakdown.** The `scan` summary object gains `totalFindings` and `severityCounts` (`{ critical, high, medium, low }`), mirroring the counts the text report already prints — so CI gates and dashboards can read a severity tally without re-aggregating the `findings` array. 1 new reporter test.
+
 - **CWE labels are now surfaced in every output format, not just SARIF.** The JSON reporter adds a `cwe` field per finding (`"CWE-89"`, or `null` for a custom rule with no mapping) plus a `cweUri` linking to the MITRE definition page (matching what SARIF's `helpUri` already provides), and the text reporter shows the CWE next to the rule ID in each finding header (`CG-001 CWE-89  SQL Injection`). Both read from the same `src/rules/cwe.ts` map that already backs the SARIF tags, so the three formats stay consistent. 3 new reporter tests.
 - **PHP rule depth: 6 → 11 rules**, closing the gap with Go/Java:
   - `CG-021` Weak Cryptography — bare `md5()`/`sha1()` calls (no algorithm argument needed — calling them at all is the signal) and `hash()` called with a weak algorithm string; `hash('sha256', ...)` is not flagged

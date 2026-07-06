@@ -1,6 +1,14 @@
-import type { Finding, ScanResult } from '../types/index.js';
+import type { Finding, ScanResult, Severity } from '../types/index.js';
 import { VERSION } from '../version.js';
 import { cweForRule, cweHelpUri, cweLabel } from '../rules/cwe.js';
+
+function countBySeverity(findings: Finding[]): Record<Severity, number> {
+  const counts: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const f of findings) {
+    counts[f.severity]++;
+  }
+  return counts;
+}
 
 export function formatJSON(result: ScanResult): string {
   const output = {
@@ -12,6 +20,8 @@ export function formatJSON(result: ScanResult): string {
       llmCalls: result.llmCalls,
       estimatedCost: result.estimatedCost,
       cacheHits: result.cacheHits,
+      totalFindings: result.findings.length,
+      severityCounts: countBySeverity(result.findings),
     },
     findings: result.findings.map(serializeFinding),
     dismissedFindings: (result.dismissedFindings ?? []).map(serializeFinding),

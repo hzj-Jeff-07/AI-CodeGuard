@@ -99,6 +99,16 @@ describe('formatJSON', () => {
     expect(parsed.findings).toHaveLength(0);
   });
 
+  it('includes a severity breakdown in the scan summary', () => {
+    const parsed = JSON.parse(formatJSON(makeScanResult([
+      makeFinding({ id: 'a', severity: 'critical' }),
+      makeFinding({ id: 'b', severity: 'high' }),
+      makeFinding({ id: 'c', severity: 'high' }),
+    ])));
+    expect(parsed.scan.totalFindings).toBe(3);
+    expect(parsed.scan.severityCounts).toEqual({ critical: 1, high: 2, medium: 0, low: 0 });
+  });
+
   it('includes fix when present', () => {
     const finding = makeFinding({
       fix: { description: 'Use parameterized query', code: 'db.query("SELECT ?", [id])' },
