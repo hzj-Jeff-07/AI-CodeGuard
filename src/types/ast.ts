@@ -45,6 +45,5 @@ export interface CallInfo {
 export interface LanguageAdapter {
   language: Language;
   fileExtensions: string[];
-  mapNodeType(rawType: string): StandardNodeType;
   extractCallInfo(node: ASTNode): CallInfo | null;
 }
