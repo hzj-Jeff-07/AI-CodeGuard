@@ -81,7 +81,10 @@ export const sensitiveDataExposure: BuiltInRule = {
 
 const DESER_FUNCTIONS_JS = ['deserialize', 'unserialize'];
 const DESER_FUNCTIONS_PY = ['loads', 'load'];
-const DESER_MODULES_PY = ['pickle', 'yaml', 'marshal'];
+// `dill` and `cloudpickle` are pickle-based extensions common in ML / data
+// pipelines (and Spark/Dask), carrying the same arbitrary-code-execution risk
+// as `pickle` itself.
+const DESER_MODULES_PY = ['pickle', 'yaml', 'marshal', 'dill', 'cloudpickle'];
 
 export const insecureDeserialization: BuiltInRule = {
   id: 'CG-041',

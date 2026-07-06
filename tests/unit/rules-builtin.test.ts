@@ -1472,6 +1472,21 @@ describe('CG-041: Insecure Deserialization', () => {
     const results = await scanCode('yaml.safe_load(data)', 'python');
     expect(findByRule(results, 'CG-041').length).toBe(0);
   });
+
+  it('detects dill.loads in Python', async () => {
+    const results = await scanCode('obj = dill.loads(data)', 'python');
+    expect(findByRule(results, 'CG-041').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects cloudpickle.loads in Python', async () => {
+    const results = await scanCode('obj = cloudpickle.loads(data)', 'python');
+    expect(findByRule(results, 'CG-041').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores json.loads in Python', async () => {
+    const results = await scanCode('obj = json.loads(data)', 'python');
+    expect(findByRule(results, 'CG-041').length).toBe(0);
+  });
 });
 
 describe('CG-041: Insecure Deserialization (Java)', () => {
