@@ -1,6 +1,12 @@
 import type { ASTNode, CallInfo, Language, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
-import { findOuterArgumentsStart } from '../../parser/languages/shared.js';
+import {
+  getArgumentsText,
+  USER_INPUT_GO,
+  USER_INPUT_JAVA,
+  USER_INPUT_JS_PY,
+  USER_INPUT_PHP,
+} from '../../parser/languages/shared.js';
 
 const PATH_FUNCTIONS_JS = ['readFile', 'readFileSync', 'writeFile', 'writeFileSync',
   'createReadStream', 'createWriteStream', 'access', 'accessSync', 'open', 'openSync',
@@ -97,9 +103,8 @@ export const pathTraversal: BuiltInRule = {
 // argument is a bare identifier, check whether it was itself assigned from a
 // user-input source nearby.
 function firstArgIdentifier(fullExpression: string): string | null {
-  const argsStart = findOuterArgumentsStart(fullExpression);
-  if (argsStart === -1) return null;
-  const argsText = fullExpression.slice(argsStart + 1, fullExpression.lastIndexOf(')')).trim();
+  const argsText = getArgumentsText(fullExpression);
+  if (argsText === null) return null;
   const firstArg = argsText.split(',')[0].trim();
   return /^\$?[A-Za-z_][A-Za-z0-9_]*$/.test(firstArg) ? firstArg : null;
 }
@@ -110,22 +115,16 @@ interface FileAccessConfig {
 }
 
 const READ_WRITE_FN = ['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'open'];
-const USER_INPUT_JS_PY = /\b(req\.|params\.|query\.|body\.|request\.|args\.|argv)/;
 
 const READ_WRITE_GO = ['Open', 'OpenFile', 'Create', 'ReadFile', 'WriteFile'];
 const READ_WRITE_OBJECTS_GO = ['os', 'ioutil'];
-// net/http's Request fields and common router libs (gorilla/mux, gin) are the
-// usual sources of attacker-controlled path segments in Go web handlers.
-const USER_INPUT_GO = /\b(r\.URL\.Query|r\.FormValue|r\.PostFormValue|mux\.Vars|c\.Param|c\.Query|os\.Args)\b/;
 
 const READ_WRITE_CONSTRUCTORS_JAVA = ['File', 'FileInputStream', 'FileOutputStream',
   'FileReader', 'FileWriter'];
 const READ_WRITE_METHODS_JAVA = ['readAllBytes', 'write', 'newInputStream', 'newOutputStream'];
 const READ_WRITE_OBJECTS_JAVA = ['Files', 'Paths', 'Path'];
-const USER_INPUT_JAVA = /\b(getParameter|getHeader|getQueryString)\b/;
 
 const READ_WRITE_PHP = ['file_get_contents', 'file_put_contents', 'fopen', 'readfile'];
-const USER_INPUT_PHP = /\$_(GET|POST|REQUEST|COOKIE)\b/;
 
 const FILE_ACCESS_CONFIG: Partial<Record<Language, FileAccessConfig>> = {
   go: {

@@ -33,3 +33,23 @@ function greet(name: string) {
 function isValidEmail(input: string) {
   return new RegExp("^[a-zA-Z0-9]+@").test(input);
 }
+
+// Safe: querying by a specific validated field, not the whole request body
+async function login(users: any, username: string) {
+  return users.findOne({ username });
+}
+
+// Safe: redirect target is a fixed, known path
+function goToLogin(res: any) {
+  res.redirect("/login");
+}
+
+// Safe: restricted to a specific signing algorithm
+function verifyToken(jwt: any, token: string, secret: string) {
+  return jwt.verify(token, secret, { algorithms: ['HS256'] });
+}
+
+// Safe: entity substitution disabled
+function parseXml(libxmljs: any, data: string) {
+  return libxmljs.parseXml(data, { noent: false });
+}

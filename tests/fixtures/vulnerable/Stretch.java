@@ -10,6 +10,7 @@ import java.util.Random;
 import java.util.regex.Pattern;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.xml.parsers.DocumentBuilderFactory;
 
 public class Stretch {
 
@@ -76,5 +77,15 @@ public class Stretch {
     // Vulnerable: Insecure Regular Expression / ReDoS (CG-023)
     public Pattern emailPattern() {
         return Pattern.compile("^([a-zA-Z0-9]+)+@");
+    }
+
+    // Vulnerable: Open Redirect (CG-025) — redirect target from request parameter
+    public void goNext(HttpServletRequest request, HttpServletResponse response) throws Exception {
+        response.sendRedirect(request.getParameter("next"));
+    }
+
+    // Vulnerable: XML External Entity (CG-070) — external DTD loading enabled
+    public void parseXml(DocumentBuilderFactory dbf) throws Exception {
+        dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", true);
     }
 }

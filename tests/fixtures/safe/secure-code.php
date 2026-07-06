@@ -55,3 +55,18 @@ function generateApiKey() {
 function isValidEmail($value) {
     return preg_match("/^[a-zA-Z0-9]+@/", $value);
 }
+
+// Safe: querying by a specific validated field, not the whole superglobal
+function login($collection, $username) {
+    return $collection->findOne(["username" => $username]);
+}
+
+// Safe: redirect target is a fixed, known path
+function goToLogin() {
+    header("Location: /login");
+}
+
+// Safe: restricted to a specific signing algorithm
+function verifyToken($jwt, $key) {
+    return JWT::decode($jwt, $key, ['HS256']);
+}

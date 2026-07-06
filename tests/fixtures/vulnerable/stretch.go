@@ -61,3 +61,8 @@ func generateSessionID() int {
 
 // Vulnerable: Insecure Regular Expression / ReDoS (CG-023)
 var emailPattern = regexp.MustCompile("^([a-zA-Z0-9]+)+@")
+
+// Vulnerable: Open Redirect (CG-025) — redirect target from query param
+func goNext(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, r.URL.Query().Get("next"), http.StatusFound)
+}

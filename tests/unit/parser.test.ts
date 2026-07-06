@@ -511,6 +511,36 @@ describe('javascriptAdapter', () => {
     expect(info!.name).toBe('eval');
     expect(info!.object).toBeNull();
   });
+
+  it('resolves the outer call of a chained expression, not the first paren', () => {
+    const node = {
+      type: 'function_call' as const,
+      rawType: 'call_expression',
+      text: 'res.status(302).redirect(url)',
+      location: { start: { line: 1, column: 0 }, end: { line: 1, column: 30 } },
+      children: [],
+      parent: null,
+      fields: {},
+    };
+    const info = javascriptAdapter.extractCallInfo(node);
+    expect(info!.name).toBe('redirect');
+    expect(info!.object).toBe('res.status(302)');
+  });
+
+  it('does not treat a regex literal receiver as an object', () => {
+    const node = {
+      type: 'function_call' as const,
+      rawType: 'call_expression',
+      text: '/\\brequest\\./.test(text)',
+      location: { start: { line: 1, column: 0 }, end: { line: 1, column: 25 } },
+      children: [],
+      parent: null,
+      fields: {},
+    };
+    const info = javascriptAdapter.extractCallInfo(node);
+    expect(info!.name).toBe('test');
+    expect(info!.object).toBeNull();
+  });
 });
 
 describe('typescriptAdapter', () => {
@@ -533,5 +563,20 @@ describe('pythonAdapter', () => {
     const info = pythonAdapter.extractCallInfo(node);
     expect(info!.name).toBe('system');
     expect(info!.object).toBe('os');
+  });
+
+  it('resolves the outer call of a chained expression, not the first paren', () => {
+    const node = {
+      type: 'function_call' as const,
+      rawType: 'call',
+      text: "db.collection('users').find(query)",
+      location: { start: { line: 1, column: 0 }, end: { line: 1, column: 35 } },
+      children: [],
+      parent: null,
+      fields: {},
+    };
+    const info = pythonAdapter.extractCallInfo(node);
+    expect(info!.name).toBe('find');
+    expect(info!.object).toBe("db.collection('users')");
   });
 });

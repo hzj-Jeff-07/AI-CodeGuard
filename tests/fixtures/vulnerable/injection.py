@@ -44,3 +44,20 @@ import re
 
 def is_valid_email(value):
     return re.compile(r"^([a-zA-Z0-9]+)+@").match(value)
+
+# Vulnerable: NoSQL Injection (CG-024) - Python
+def login(users, request):
+    return users.find_one(request.json)
+
+# Vulnerable: Open Redirect (CG-025) - Python
+def go_next(request):
+    return redirect(request.args.get("next"))
+
+# Vulnerable: JWT Signature Bypass (CG-026) - disables signature checking
+def verify_token(jwt, token, key):
+    return jwt.decode(token, key, options={"verify_signature": False})
+
+# Vulnerable: XML External Entity (CG-070) - external entities resolved
+def parse_xml(etree, data):
+    parser = etree.XMLParser(resolve_entities=True)
+    return etree.fromstring(data, parser)

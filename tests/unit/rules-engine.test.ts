@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createRuleContext } from '../../src/rules/engine.js';
 import { getRules, loadRules, runRules, getAllRuleIds, getRuleById } from '../../src/rules/index.js';
+import { CWE_BY_RULE } from '../../src/rules/cwe.js';
 import { parse } from '../../src/parser/index.js';
 
 const FIXTURES_DIR = resolve(__dirname, '../fixtures');
@@ -107,7 +108,7 @@ describe('createRuleContext', () => {
 describe('getRules', () => {
   it('returns all rules with default options', () => {
     const rules = getRules();
-    expect(rules.length).toBe(15);
+    expect(rules.length).toBe(19);
   });
 
   it('returns empty array for preset none', () => {
@@ -117,19 +118,19 @@ describe('getRules', () => {
 
   it('returns all rules for preset owasp-top-10', () => {
     const rules = getRules({ preset: 'owasp-top-10' });
-    expect(rules.length).toBe(15);
+    expect(rules.length).toBe(19);
   });
 
   it('returns all rules for preset all', () => {
     const rules = getRules({ preset: 'all' });
-    expect(rules.length).toBe(15);
+    expect(rules.length).toBe(19);
   });
 
   it('disables specified rules', () => {
     const rules = getRules({ disable: ['CG-001', 'CG-010'] });
     expect(rules.find(r => r.id === 'CG-001')).toBeUndefined();
     expect(rules.find(r => r.id === 'CG-010')).toBeUndefined();
-    expect(rules.length).toBe(13);
+    expect(rules.length).toBe(17);
   });
 });
 
@@ -428,11 +429,26 @@ patterns:
 // ── getAllRuleIds / getRuleById ──────────────────────────────────
 
 describe('getAllRuleIds', () => {
-  it('returns all 14 rule IDs', () => {
+  it('returns all 19 rule IDs', () => {
     const ids = getAllRuleIds();
-    expect(ids.length).toBe(15);
+    expect(ids.length).toBe(19);
     expect(ids).toContain('CG-001');
     expect(ids).toContain('CG-060');
+  });
+});
+
+describe('CWE mapping', () => {
+  it('maps every built-in rule ID to a CWE (no rule ships without one)', () => {
+    for (const id of getAllRuleIds()) {
+      expect(CWE_BY_RULE[id], `missing CWE mapping for ${id}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('has no stale CWE entries for rules that no longer exist', () => {
+    const ids = new Set(getAllRuleIds());
+    for (const id of Object.keys(CWE_BY_RULE)) {
+      expect(ids.has(id), `CWE_BY_RULE has an entry for unknown rule ${id}`).toBe(true);
+    }
   });
 });
 

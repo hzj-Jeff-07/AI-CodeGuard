@@ -40,3 +40,20 @@ import re
 
 def is_valid_email(value):
     return re.compile(r"^[a-zA-Z0-9]+@").match(value)
+
+# Safe: querying by a specific validated field, not the whole request body
+def login(users, username):
+    return users.find_one({"username": username})
+
+# Safe: redirect target is a fixed, known path
+def go_to_login():
+    return redirect("/login")
+
+# Safe: restricted to a specific signing algorithm
+def verify_token(jwt, token, key):
+    return jwt.decode(token, key, algorithms=["HS256"])
+
+# Safe: external entities not resolved, no network access
+def parse_xml(etree, data):
+    parser = etree.XMLParser(resolve_entities=False, no_network=True)
+    return etree.fromstring(data, parser)

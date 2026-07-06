@@ -1,5 +1,6 @@
-import type { ASTNode, SuspiciousNode } from '../../types/index.js';
+import type { ASTNode, Language, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
+import { getArgumentsText, splitTopLevelArgs } from '../../parser/languages/shared.js';
 
 const SQL_METHODS = ['query', 'execute', 'raw', 'exec', 'prepare'];
 const SQL_METHODS_GO = ['Query', 'QueryRow', 'QueryContext', 'QueryRowContext', 'Exec', 'ExecContext', 'Prepare', 'PrepareContext'];
@@ -192,6 +193,136 @@ export const commandInjection: BuiltInRule = {
       snippet: ctx.getSnippet(node),
       context: ctx.getContext(node, 3),
       confidence: 0.85,
+      metadata: { method: call.name, object: call.object },
+    };
+  },
+};
+
+// JS/TS's native MongoDB driver and PHP's mongodb/mongodb library both use
+// camelCase method names; pymongo follows Python's snake_case convention
+// instead (`find_one`, not `findOne`).
+const MONGO_METHODS = ['find', 'findOne', 'findOneAndUpdate', 'findOneAndDelete', 'findOneAndReplace',
+  'updateOne', 'updateMany', 'deleteOne', 'deleteMany', 'replaceOne', 'aggregate'];
+const MONGO_UPDATE_METHODS = ['updateOne', 'updateMany', 'findOneAndUpdate', 'replaceOne', 'findOneAndReplace'];
+const MONGO_METHODS_PY = ['find', 'find_one', 'find_one_and_update', 'find_one_and_delete',
+  'find_one_and_replace', 'update_one', 'update_many', 'delete_one', 'delete_many',
+  'replace_one', 'aggregate', 'count_documents'];
+const MONGO_UPDATE_METHODS_PY = ['update_one', 'update_many', 'find_one_and_update', 'replace_one', 'find_one_and_replace'];
+
+// `find`/`find_one` collide with unrelated, very common APIs on a non-Mongo
+// receiver (Array.prototype.find, Python's str.find) — a bare method-name
+// match on these two is much weaker evidence than the others, so it gets a
+// reduced confidence instead of being suppressed outright (Stage 2 still
+// sees it and can dismiss non-Mongo hits).
+const AMBIGUOUS_METHODS = new Set(['find', 'find_one']);
+
+// Passing the entire request object as a MongoDB filter/update document lets
+// an attacker submit query operators instead of a plain value — e.g.
+// `{"password": {"$ne": null}}` as the request body bypasses a password
+// check entirely. A specific field access (`req.body.username`) is an
+// ordinary string value and isn't the same risk, so only the *whole* object
+// being passed directly (not a property of it) is flagged.
+const WHOLE_REQUEST_OBJECT_JS = /^(req|request)\.(body|query|params)$/;
+const WHOLE_REQUEST_OBJECT_PY = /^request\.(json|args|form|GET|POST|data)$/;
+const WHOLE_REQUEST_OBJECT_PHP = /^\$_(GET|POST|REQUEST)$/;
+
+interface NosqlConfig {
+  methods: string[];
+  updateMethods: string[];
+  wholeObjectPattern: RegExp;
+}
+
+// Each language's Mongo-driver method names + whole-object pattern, keyed by
+// language so the two stay paired instead of drifting apart as independent
+// ternary chains.
+const NOSQL_CONFIG: Partial<Record<Language, NosqlConfig>> = {
+  python: {
+    methods: MONGO_METHODS_PY,
+    updateMethods: MONGO_UPDATE_METHODS_PY,
+    wholeObjectPattern: WHOLE_REQUEST_OBJECT_PY,
+  },
+  php: {
+    methods: MONGO_METHODS,
+    updateMethods: MONGO_UPDATE_METHODS,
+    wholeObjectPattern: WHOLE_REQUEST_OBJECT_PHP,
+  },
+};
+const DEFAULT_NOSQL_CONFIG: NosqlConfig = {
+  methods: MONGO_METHODS,
+  updateMethods: MONGO_UPDATE_METHODS,
+  wholeObjectPattern: WHOLE_REQUEST_OBJECT_JS,
+};
+
+// `$where` executes its string as arbitrary JavaScript inside MongoDB
+// itself — string-building its content is effectively server-side code
+// injection, the NoSQL analogue of CG-003.
+const WHERE_CLAUSE = '$where';
+
+// Finds where the `$where` key's *value* begins, so a dynamic fragment can be
+// checked for actually being that value rather than merely appearing
+// somewhere later in the same call (e.g. an unrelated sibling field like
+// `find({$where: "x"}, {note: \`${n}\`})`, where the template belongs to `note`).
+// Skips an optional quote closing the key itself, then whitespace, then the
+// key/value separator (`:` for JS/Python/PHP object literals, `=>` for PHP arrays).
+function findWhereValueStart(fullExpression: string, whereIndex: number): number {
+  let i = whereIndex + WHERE_CLAUSE.length;
+  if (fullExpression[i] === '\'' || fullExpression[i] === '"') i += 1;
+  while (i < fullExpression.length && /\s/.test(fullExpression[i])) i += 1;
+  if (fullExpression.slice(i, i + 2) === '=>') i += 2;
+  else if (fullExpression[i] === ':') i += 1;
+  while (i < fullExpression.length && /\s/.test(fullExpression[i])) i += 1;
+  return i;
+}
+
+export const nosqlInjection: BuiltInRule = {
+  id: 'CG-024',
+  name: 'NoSQL Injection',
+  severity: 'high',
+  category: 'injection',
+  languages: ['javascript', 'typescript', 'python', 'php'],
+  description: 'Detects MongoDB queries built from an entire user-controlled request object, a raw update document, or a dynamically-built $where clause, allowing query-operator or code injection.',
+
+  check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
+    if (node.type !== 'function_call') return null;
+
+    const call = ctx.extractCallInfo(node);
+    if (!call) return null;
+    if (call.object === null) return null;
+
+    const config = NOSQL_CONFIG[ctx.language] ?? DEFAULT_NOSQL_CONFIG;
+    if (!config.methods.includes(call.name)) return null;
+
+    const whereIndex = call.fullExpression.indexOf(WHERE_CLAUSE);
+    const whereValueStart = whereIndex !== -1 ? findWhereValueStart(call.fullExpression, whereIndex) : -1;
+    const hasWhereInjection = whereIndex !== -1 && node.children.some(c => {
+      if (c.type !== 'template_string' && c.type !== 'string_concat') return false;
+      return call.fullExpression.indexOf(c.text, whereValueStart) === whereValueStart;
+    });
+
+    // Filter (arg 0) is dangerous for every method; the update/replacement
+    // document (arg 1) is equally dangerous for the update-family methods —
+    // `updateOne({_id}, req.body)` lets an attacker inject $set/$rename.
+    const argsText = getArgumentsText(call.fullExpression);
+    const args = argsText !== null ? splitTopLevelArgs(argsText) : [];
+    const dangerousArgIndexes = config.updateMethods.includes(call.name) ? [0, 1] : [0];
+    const isWholeObjectPass = dangerousArgIndexes.some(
+      i => args[i] !== undefined && config.wholeObjectPattern.test(args[i])
+    );
+
+    if (!hasWhereInjection && !isWholeObjectPass) return null;
+
+    const isAmbiguous = AMBIGUOUS_METHODS.has(call.name) && !hasWhereInjection;
+
+    return {
+      file: ctx.file,
+      language: ctx.language,
+      ruleId: 'CG-024',
+      ruleName: 'NoSQL Injection',
+      node,
+      location: node.location,
+      snippet: ctx.getSnippet(node),
+      context: ctx.getContext(node, 3),
+      confidence: isAmbiguous ? 0.5 : 0.7,
       metadata: { method: call.name, object: call.object },
     };
   },

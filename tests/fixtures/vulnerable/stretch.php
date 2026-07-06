@@ -31,3 +31,23 @@ function generateApiKey() {
 function isValidEmail($value) {
     return preg_match("/^([a-zA-Z0-9]+)+@/", $value);
 }
+
+// Vulnerable: NoSQL Injection (CG-024) — whole superglobal as filter
+function login($collection) {
+    return $collection->findOne($_POST);
+}
+
+// Vulnerable: Open Redirect (CG-025) — redirect target from $_GET
+function goNext() {
+    header("Location: " . $_GET["next"]);
+}
+
+// Vulnerable: JWT Signature Bypass (CG-026) — accepts the "none" algorithm
+function verifyToken($jwt, $key) {
+    return JWT::decode($jwt, $key, ['none']);
+}
+
+// Vulnerable: XML External Entity (CG-070) — entity substitution flag
+function parseXml($data) {
+    return simplexml_load_string($data, "SimpleXMLElement", LIBXML_NOENT);
+}

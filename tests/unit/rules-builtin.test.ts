@@ -459,6 +459,357 @@ describe('CG-003: Code Injection', () => {
   });
 });
 
+// ── CG-024: NoSQL Injection ──────────────────────────────────────
+
+describe('CG-024: NoSQL Injection', () => {
+  it('detects the whole request body passed as a MongoDB filter', async () => {
+    const results = await scanCode('users.find(req.body)');
+    expect(findByRule(results, 'CG-024').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects the whole request query object passed to findOne', async () => {
+    const results = await scanCode('users.findOne(req.query)');
+    expect(findByRule(results, 'CG-024').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects a dynamically-built $where clause', async () => {
+    const results = await scanCode('users.find({ $where: "this.name == \'" + name + "\'" })');
+    expect(findByRule(results, 'CG-024').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a specific field access from the request', async () => {
+    const results = await scanCode('users.find(req.body.username)');
+    expect(findByRule(results, 'CG-024').length).toBe(0);
+  });
+
+  it('ignores a static filter object', async () => {
+    const results = await scanCode('users.find({ active: true })');
+    expect(findByRule(results, 'CG-024').length).toBe(0);
+  });
+
+  it('detects the whole request body passed as an update document', async () => {
+    // Mass-assignment via the *second* argument of updateOne: an attacker
+    // can inject $set/$rename operators through an unvalidated update doc,
+    // even when the filter (first argument) is perfectly safe.
+    const results = await scanCode('users.updateOne({ _id: id }, req.body)');
+    expect(findByRule(results, 'CG-024').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a static update document', async () => {
+    const results = await scanCode('users.updateOne({ _id: id }, { active: true })');
+    expect(findByRule(results, 'CG-024').length).toBe(0);
+  });
+
+  it('does not flag $where when the dynamic content belongs to an unrelated sibling field', async () => {
+    const results = await scanCode('users.find({ $where: "this.active == true", note: `hi ${x}` })');
+    expect(findByRule(results, 'CG-024').length).toBe(0);
+  });
+
+  it('reduces confidence for the ambiguous find() name without other Mongo evidence', async () => {
+    const results = await scanCode('logs.find(req.query)');
+    const findings = findByRule(results, 'CG-024');
+    expect(findings.length).toBeGreaterThanOrEqual(1);
+    expect(findings[0].confidence).toBeLessThan(0.7);
+  });
+});
+
+describe('CG-024: NoSQL Injection (Python)', () => {
+  it('detects the whole request.json passed as a filter', async () => {
+    const results = await scanCode('users.find(request.json)', 'python');
+    expect(findByRule(results, 'CG-024').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("detects pymongo's snake_case find_one", async () => {
+    // Regression guard: pymongo uses snake_case (find_one), not the
+    // camelCase (findOne) the JS/PHP MongoDB drivers use.
+    const results = await scanCode('users.find_one(request.json)', 'python');
+    expect(findByRule(results, 'CG-024').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a specific field access from the request', async () => {
+    const results = await scanCode('users.find_one(request.json["id"])', 'python');
+    expect(findByRule(results, 'CG-024').length).toBe(0);
+  });
+});
+
+describe('CG-024: NoSQL Injection (PHP)', () => {
+  it('detects the whole $_GET superglobal passed as a filter', async () => {
+    const results = await scanCode('<?php $collection->find($_GET);', 'php');
+    expect(findByRule(results, 'CG-024').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a specific field access from $_GET', async () => {
+    const results = await scanCode('<?php $collection->find($_GET["id"]);', 'php');
+    expect(findByRule(results, 'CG-024').length).toBe(0);
+  });
+});
+
+// ── CG-025: Open Redirect ─────────────────────────────────────────
+
+describe('CG-025: Open Redirect', () => {
+  it('detects res.redirect with a query parameter', async () => {
+    const results = await scanCode('res.redirect(req.query.url)');
+    expect(findByRule(results, 'CG-025').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores res.redirect with a static path', async () => {
+    const results = await scanCode('res.redirect("/login")');
+    expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+
+  it('ignores an unrelated res.status call', async () => {
+    const results = await scanCode('res.status(req.query.code)');
+    expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+
+  it('detects a chained res.status(...).redirect(...) call', async () => {
+    const results = await scanCode('res.status(302).redirect(req.query.url)');
+    expect(findByRule(results, 'CG-025').length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('CG-025: Open Redirect (Python)', () => {
+  it("detects Flask's redirect() with a query parameter", async () => {
+    const results = await scanCode('redirect(request.args.get("next"))', 'python');
+    expect(findByRule(results, 'CG-025').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores redirect() with a static path', async () => {
+    const results = await scanCode('redirect("/login")', 'python');
+    expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+});
+
+describe('CG-025: Open Redirect (Go)', () => {
+  it('detects http.Redirect with a query parameter', async () => {
+    const source = `package main
+func f(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, r.URL.Query().Get("next"), 302)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-025').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores http.Redirect with a static path', async () => {
+    const source = `package main
+func f(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/login", 302)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+});
+
+describe('CG-025: Open Redirect (Java)', () => {
+  it('detects sendRedirect with a request parameter', async () => {
+    const source = `class T {
+  void f(HttpServletRequest request, HttpServletResponse response) throws Exception {
+    response.sendRedirect(request.getParameter("next"));
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-025').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores sendRedirect with a static path', async () => {
+    const source = `class T {
+  void f(HttpServletResponse response) throws Exception {
+    response.sendRedirect("/login");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+});
+
+describe('CG-025: Open Redirect (PHP)', () => {
+  it('detects a Location header built from $_GET', async () => {
+    const results = await scanCode('<?php header("Location: " . $_GET["next"]);', 'php');
+    expect(findByRule(results, 'CG-025').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a static Location header', async () => {
+    const results = await scanCode('<?php header("Location: /login");', 'php');
+    expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+
+  it('ignores an unrelated header() call', async () => {
+    const results = await scanCode('<?php header("Content-Type: " . $_GET["type"]);', 'php');
+    expect(findByRule(results, 'CG-025').length).toBe(0);
+  });
+});
+
+// ── CG-026: JWT Signature Bypass ──────────────────────────────────
+
+describe('CG-026: JWT Signature Bypass', () => {
+  it('detects algorithms: ["none"] in jwt.verify', async () => {
+    const results = await scanCode("jwt.verify(token, secret, { algorithms: ['none'] })");
+    expect(findByRule(results, 'CG-026').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a specific safe algorithm', async () => {
+    const results = await scanCode("jwt.verify(token, secret, { algorithms: ['HS256'] })");
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
+
+  it('detects "none" listed alongside a real algorithm', async () => {
+    // The allow-list `['HS256', 'none']` still accepts an unsigned token, so
+    // "none" appearing anywhere in the array is exploitable — not just first.
+    const results = await scanCode("jwt.verify(token, secret, { algorithms: ['HS256', 'none'] })");
+    expect(findByRule(results, 'CG-026').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a multi-algorithm allow-list without "none"', async () => {
+    const results = await scanCode("jwt.verify(token, secret, { algorithms: ['HS256', 'RS256'] })");
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
+
+  it('ignores an unrelated (non-JWT) call taking an algorithms list with "none"', async () => {
+    // The rule is gated to verify/decode calls, so a compression/cipher API
+    // whose `algorithms` enum happens to include a `'none'` no-op is not flagged.
+    const results = await scanCode("transport.negotiate({ algorithms: ['aes256', 'none'] })");
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
+});
+
+describe('CG-026: JWT Signature Bypass (Python)', () => {
+  it('detects verify_signature disabled in jwt.decode', async () => {
+    const results = await scanCode('jwt.decode(token, key, options={"verify_signature": False})', 'python');
+    expect(findByRule(results, 'CG-026').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects the legacy pre-2.0 PyJWT verify=False opt-out', async () => {
+    const results = await scanCode('jwt.decode(token, key, verify=False)', 'python');
+    expect(findByRule(results, 'CG-026').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not flag an unrelated verify=False (e.g. requests TLS option)', async () => {
+    // `verify=False` on requests is a real issue, but it's a TLS-cert bypass
+    // (CG-050), not a JWT one — CG-026 must not claim it.
+    const results = await scanCode('requests.get(url, verify=False)', 'python');
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
+
+  it('ignores a normal decode with an algorithms allowlist', async () => {
+    const results = await scanCode('jwt.decode(token, key, algorithms=["HS256"])', 'python');
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
+});
+
+describe('CG-026: JWT Signature Bypass (PHP)', () => {
+  it('detects JWT::decode allowing the none algorithm', async () => {
+    const results = await scanCode("<?php $decoded = JWT::decode($jwt, $key, ['none']);", 'php');
+    expect(findByRule(results, 'CG-026').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores JWT::decode with a specific safe algorithm', async () => {
+    const results = await scanCode("<?php $decoded = JWT::decode($jwt, $key, ['HS256']);", 'php');
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
+
+  it('ignores an unrelated decode() call mentioning none', async () => {
+    const results = await scanCode("<?php $x = Cipher::decode($data, 'none');", 'php');
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
+
+  it("ignores 'none' used as a key-id lookup when algorithms are safe", async () => {
+    // `$keys['none']` is a subscript, not the algorithms array — the safe
+    // ['HS256'] allow-list must win.
+    const results = await scanCode("<?php $decoded = JWT::decode($jwt, $keys['none'], ['HS256']);", 'php');
+    expect(findByRule(results, 'CG-026').length).toBe(0);
+  });
+});
+
+// ── CG-070: XML External Entity (XXE) ─────────────────────────────
+
+describe('CG-070: XML External Entity (XXE)', () => {
+  it('detects libxmljs parseXml with noent: true', async () => {
+    const results = await scanCode('libxmljs.parseXml(data, { noent: true })');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores parseXml with noent: false', async () => {
+    const results = await scanCode('libxmljs.parseXml(data, { noent: false })');
+    expect(findByRule(results, 'CG-070').length).toBe(0);
+  });
+});
+
+describe('CG-070: XML External Entity (XXE) (Python)', () => {
+  it('detects an lxml parser with resolve_entities=True', async () => {
+    const results = await scanCode('parser = etree.XMLParser(resolve_entities=True)', 'python');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects an lxml parser with no_network=False', async () => {
+    const results = await scanCode('parser = etree.XMLParser(no_network=False)', 'python');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a hardened lxml parser', async () => {
+    const results = await scanCode('parser = etree.XMLParser(resolve_entities=False, no_network=True)', 'python');
+    expect(findByRule(results, 'CG-070').length).toBe(0);
+  });
+});
+
+describe('CG-070: XML External Entity (XXE) (Java)', () => {
+  it('detects enabling the load-external-dtd feature', async () => {
+    const source = `class T {
+  void f(DocumentBuilderFactory dbf) throws Exception {
+    dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", true);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects setExpandEntityReferences(true)', async () => {
+    const source = `class T {
+  void f(DocumentBuilderFactory dbf) {
+    dbf.setExpandEntityReferences(true);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects enabling the external-parameter-entities SAX feature', async () => {
+    const source = `class T {
+  void f(SAXParserFactory spf) throws Exception {
+    spf.setFeature("http://xml.org/sax/features/external-parameter-entities", true);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores the hardening call disallow-doctype-decl = true', async () => {
+    const source = `class T {
+  void f(DocumentBuilderFactory dbf) throws Exception {
+    dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-070').length).toBe(0);
+  });
+});
+
+describe('CG-070: XML External Entity (XXE) (PHP)', () => {
+  it('detects the LIBXML_NOENT flag', async () => {
+    const results = await scanCode('<?php $x = simplexml_load_string($data, "SimpleXMLElement", LIBXML_NOENT);', 'php');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects re-enabling the entity loader', async () => {
+    const results = await scanCode('<?php libxml_disable_entity_loader(false);', 'php');
+    expect(findByRule(results, 'CG-070').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a plain simplexml_load_string', async () => {
+    const results = await scanCode('<?php $x = simplexml_load_string($data);', 'php');
+    expect(findByRule(results, 'CG-070').length).toBe(0);
+  });
+});
+
 // ── CG-010: XSS ────────────────────────────────────────────────
 
 describe('CG-010: Cross-Site Scripting (XSS)', () => {

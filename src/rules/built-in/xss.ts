@@ -1,6 +1,6 @@
 import type { ASTNode, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
-import { findOuterArgumentsStart } from '../../parser/languages/shared.js';
+import { getArgumentsText } from '../../parser/languages/shared.js';
 
 const XSS_SINKS = ['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'document.write', 'document.writeln'];
 
@@ -17,9 +17,8 @@ const XSS_SINK_METHODS_JAVA = ['write', 'print', 'println'];
 // anything else (a variable, an f-string, string concatenation, a nested
 // call) means the sink is rendering something other than a fixed literal.
 function hasOnlyStaticStringArg(fullExpression: string): boolean {
-  const argsStart = findOuterArgumentsStart(fullExpression);
-  if (argsStart === -1) return false;
-  const argsText = fullExpression.slice(argsStart + 1, fullExpression.lastIndexOf(')')).trim();
+  const argsText = getArgumentsText(fullExpression);
+  if (argsText === null) return false;
   return argsText === '' || /^['"][^'"]*['"]$/.test(argsText);
 }
 

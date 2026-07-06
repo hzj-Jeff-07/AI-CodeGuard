@@ -1,5 +1,6 @@
 import type { Finding, ScanResult, Severity } from '../types/index.js';
 import { VERSION } from '../version.js';
+import { cweForRule, cweHelpUri, securitySeverityScore } from '../rules/cwe.js';
 
 interface SarifLog {
   $schema: string;
@@ -24,6 +25,11 @@ interface SarifRuleDescriptor {
   name: string;
   shortDescription: { text: string };
   defaultConfiguration: { level: string };
+  helpUri?: string;
+  properties: {
+    tags: string[];
+    'security-severity': string;
+  };
 }
 
 interface SarifResult {
@@ -85,12 +91,25 @@ export function formatSARIF(result: ScanResult): string {
           name: 'AI-CodeGuard',
           version: VERSION,
           informationUri: 'https://github.com/hzj-Jeff-07/AI-CodeGuard',
-          rules: Array.from(ruleMap.entries()).map(([id, f]) => ({
-            id,
-            name: f.title.replace(/\s+/g, ''),
-            shortDescription: { text: f.title },
-            defaultConfiguration: { level: severityToLevel(f.severity) },
-          })),
+          rules: Array.from(ruleMap.entries()).map(([id, f]) => {
+            const cwe = cweForRule(id);
+            const descriptor: SarifRuleDescriptor = {
+              id,
+              name: f.title.replace(/\s+/g, ''),
+              shortDescription: { text: f.title },
+              defaultConfiguration: { level: severityToLevel(f.severity) },
+              properties: {
+                // GitHub Code Scanning renders `external/cwe/cwe-N` tags as CWE
+                // labels and ranks alerts by `security-severity`.
+                tags: cwe !== undefined ? ['security', `external/cwe/cwe-${cwe}`] : ['security'],
+                'security-severity': securitySeverityScore(f.severity),
+              },
+            };
+            if (cwe !== undefined) {
+              descriptor.helpUri = cweHelpUri(cwe);
+            }
+            return descriptor;
+          }),
         },
       },
       results: result.findings.map(f => {

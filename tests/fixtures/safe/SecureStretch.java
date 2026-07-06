@@ -8,6 +8,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.regex.Pattern;
 import javax.servlet.http.HttpServletResponse;
+import javax.xml.parsers.DocumentBuilderFactory;
 
 public class SecureStretch {
 
@@ -65,5 +66,16 @@ public class SecureStretch {
     // Safe: no nested/overlapping quantifiers
     public Pattern emailPattern() {
         return Pattern.compile("^[a-zA-Z0-9]+@");
+    }
+
+    // Safe: redirect target is a fixed, known path
+    public void goToLogin(HttpServletResponse response) throws Exception {
+        response.sendRedirect("/login");
+    }
+
+    // Safe: DOCTYPE declarations disallowed, external DTDs disabled
+    public void parseXml(DocumentBuilderFactory dbf) throws Exception {
+        dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
     }
 }

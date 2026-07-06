@@ -39,3 +39,23 @@ function createHandler(code: string) {
 function isValidEmail(input: string) {
   return new RegExp("^([a-zA-Z0-9]+)+@").test(input);
 }
+
+// Vulnerable: NoSQL Injection (CG-024) — whole request body as filter
+async function login(users: any, req: any) {
+  return users.findOne(req.body);
+}
+
+// Vulnerable: Open Redirect (CG-025) — redirect target from user input
+function goNext(res: any, req: any) {
+  res.redirect(req.query.next);
+}
+
+// Vulnerable: JWT Signature Bypass (CG-026) — accepts the "none" algorithm
+function verifyToken(jwt: any, token: string, secret: string) {
+  return jwt.verify(token, secret, { algorithms: ['none'] });
+}
+
+// Vulnerable: XML External Entity (CG-070) — entity substitution enabled
+function parseXml(libxmljs: any, data: string) {
+  return libxmljs.parseXml(data, { noent: true });
+}
