@@ -89,6 +89,23 @@ node dist/index.js rules validate ./custom-rules
 node dist/index.js rules test ./custom-rules ./src --output json
 ```
 
+### Suppressing a finding
+
+Silence a specific finding with an inline comment (any language's comment syntax works). A bare directive suppresses every rule on the line; add rule IDs to scope it, and anything after the IDs is treated as a free-text reason:
+
+```js
+db.query("SELECT * FROM t WHERE id = " + id); // codeguard-ignore CG-001 — id is an internal constant
+```
+
+Use `codeguard-ignore-next-line` to annotate the following line instead:
+
+```py
+# codeguard-ignore-next-line CG-002
+subprocess.run(cmd, shell=True)
+```
+
+Suppressed findings are dropped during Stage 1, so they never reach Stage 2 (no LLM cost).
+
 ### Use as GitHub Action
 
 Add a workflow that scans every pull request and uploads results to GitHub Code Scanning (Security tab):

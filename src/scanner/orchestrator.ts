@@ -8,6 +8,7 @@ import { loadRules, runRules } from '../rules/index.js';
 import { generateReport } from '../reporter/index.js';
 import { analyzeFindings, type AnalyzeFindingsDependencies } from '../analyzer/index.js';
 import { FileCacheStore } from '../cache/index.js';
+import { filterSuppressed } from './suppression.js';
 
 export interface ScanOptions {
   paths: string[];
@@ -53,7 +54,7 @@ export async function scan(
     try {
       const source = await readFile(file, 'utf-8');
       const tree = await parse(source, language);
-      const suspicious = runRules(tree, rules, file);
+      const suspicious = filterSuppressed(runRules(tree, rules, file), source);
       allSuspicious.push(...suspicious);
     } catch (error) {
       skipped.push({
