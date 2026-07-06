@@ -89,6 +89,10 @@ node dist/index.js rules validate ./custom-rules
 node dist/index.js rules test ./custom-rules ./src --output json
 ```
 
+### Measuring precision
+
+Unit tests assert single-pattern behavior; the **precision corpus** (`tests/corpus/`) measures the scanner on realistic mixed code. Vulnerable lines carry ground-truth `codeguard-expect CG-XXX` annotations (including cases the flat-node model is known to miss, kept honest as FNs), and tricky-but-safe code is asserted clean. `npm run precision` prints TP/FN/FP with precision/recall, and a ratchet test fails CI if either metric drops below the current baseline (precision ≥ 95%, recall ≥ 90%).
+
 ### Suppressing a finding
 
 Silence a specific finding with an inline comment (any language's comment syntax works). A bare directive suppresses every rule on the line; add rule IDs to scope it, and anything after the IDs is treated as a free-text reason:

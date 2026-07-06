@@ -23,7 +23,8 @@
     "test:run": "vitest run",
     "lint": "eslint src/",
     "prepublishOnly": "npm run build && npm run test:run",
-    "scan:self": "node dist/index.js scan ./src"
+    "scan:self": "node dist/index.js scan ./src",
+    "precision": "vitest run tests/precision"
   },
   "keywords": [
     "security",
