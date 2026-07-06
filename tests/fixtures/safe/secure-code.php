@@ -45,3 +45,8 @@ function secureFetch($ch, $url) {
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
     return curl_exec($ch);
 }
+
+// Safe: cryptographic RNG for an API key
+function generateApiKey() {
+    return bin2hex(random_bytes(16));
+}

@@ -163,3 +163,70 @@ export const weakCryptography: BuiltInRule = {
     };
   },
 };
+
+// A non-cryptographic PRNG (Math.random, Python's random module, Go's
+// math/rand, java.util.Random, PHP's rand()/mt_rand()) is fine for sampling,
+// jitter, or UI — the problem is only when its output is used as a security
+// token, session ID, password, or similar. Since Stage 1 has no dataflow
+// analysis, that intent is inferred from security-sensitive keywords in the
+// surrounding lines rather than tracing where the value actually flows.
+// Deliberately no `\b` word-boundary anchors: the keyword is typically
+// embedded in a camelCase/PascalCase identifier (`generateSessionID`,
+// `passwordResetToken`), where a boundary never appears between the words.
+const INSECURE_RANDOM_CONTEXT = /token|session|password|passwd|secret|otp|api[_-]?key|reset|nonce|csrf/i;
+// math/rand's Intn/Int31/Int63/Float32/Float64/Perm/Shuffle have no
+// crypto/rand equivalent under the same name (crypto/rand only exposes
+// Read/Int/Prime), so matching these names alone is unambiguous.
+const INSECURE_RAND_FNS_GO = ['Intn', 'Int31', 'Int31n', 'Int63', 'Int63n',
+  'Float32', 'Float64', 'Perm', 'Shuffle'];
+// Python's `secrets` module is the secure alternative; `random`'s functions
+// are the insecure signal.
+const INSECURE_RAND_FNS_PY = ['random', 'randint', 'randrange', 'choice', 'sample', 'uniform'];
+const INSECURE_RAND_FNS_PHP = ['rand', 'mt_rand'];
+
+export const insecureRandomness: BuiltInRule = {
+  id: 'CG-022',
+  name: 'Insecure Randomness',
+  severity: 'medium',
+  category: 'auth',
+  languages: ['javascript', 'typescript', 'python', 'go', 'java', 'php'],
+  description: 'Detects a non-cryptographic random number generator used in a security-sensitive context (tokens, sessions, passwords).',
+
+  check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
+    if (node.type !== 'function_call') return null;
+
+    const call = ctx.extractCallInfo(node);
+    if (!call) return null;
+
+    let isInsecureRandomCall: boolean;
+    if (ctx.language === 'go') {
+      isInsecureRandomCall = call.object === 'rand' && INSECURE_RAND_FNS_GO.includes(call.name);
+    } else if (ctx.language === 'java') {
+      // `new Random(...)`; `new SecureRandom(...)` has a different name and
+      // is intentionally not matched.
+      isInsecureRandomCall = call.object === null && call.name === 'Random';
+    } else if (ctx.language === 'php') {
+      isInsecureRandomCall = call.object === null && INSECURE_RAND_FNS_PHP.includes(call.name);
+    } else if (ctx.language === 'python') {
+      isInsecureRandomCall = call.object === 'random' && INSECURE_RAND_FNS_PY.includes(call.name);
+    } else {
+      isInsecureRandomCall = call.object === 'Math' && call.name === 'random';
+    }
+    if (!isInsecureRandomCall) return null;
+
+    if (!INSECURE_RANDOM_CONTEXT.test(ctx.getContext(node, 3))) return null;
+
+    return {
+      file: ctx.file,
+      language: ctx.language,
+      ruleId: 'CG-022',
+      ruleName: 'Insecure Randomness',
+      node,
+      location: node.location,
+      snippet: ctx.getSnippet(node),
+      context: ctx.getContext(node, 2),
+      confidence: 0.65,
+      metadata: { method: call.name },
+    };
+  },
+};

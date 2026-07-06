@@ -21,3 +21,8 @@ function insecureFetch($ch, $url) {
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     return curl_exec($ch);
 }
+
+// Vulnerable: Insecure Randomness (CG-022) — mt_rand() for an API key
+function generateApiKey() {
+    return mt_rand(100000, 999999);
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"log"
@@ -37,4 +38,11 @@ func logStartup() {
 // Safe: TLS verification enabled
 func secureClient() *tls.Config {
 	return &tls.Config{InsecureSkipVerify: false}
+}
+
+// Safe: cryptographic RNG for a session token
+func generateSessionToken() ([]byte, error) {
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	return b, err
 }

@@ -26,6 +26,10 @@ Caught by an 8-angle code review of the additions above, before any release:
 - **`CG-010`'s `hasOnlyStaticStringArg` treated a zero-argument call as dynamic** — `response.getWriter().println()` (inert; prints nothing but a newline) failed the "sole static string literal" regex against an empty argument list and was incorrectly flagged. Empty arguments are now treated as static.
 - 5 new regression tests covering all five fixes (365 tests total).
 
+### Added
+
+- **New rule: `CG-022` Insecure Randomness (CWE-330)**, covering all 6 supported languages — a new rule category, not just a language extension. Flags a non-cryptographic PRNG (`Math.random`, Python's `random` module, Go's `math/rand`, `java.util.Random`, PHP's `rand`/`mt_rand`) used to build a token, session ID, password, or similar. Since Stage 1 has no dataflow analysis, "security-sensitive" is inferred from keywords (`token`/`session`/`password`/`secret`/`otp`/`api_key`/`reset`/`nonce`/`csrf`) in the surrounding source lines rather than tracing where the value flows — deliberately without `\b` word-boundary anchors, since the keyword is typically embedded in a camelCase/PascalCase identifier (`generateSessionID`) where a boundary never appears between the words. The cryptographic alternatives (`crypto.randomBytes`, Python's `secrets`, `crypto/rand`, `SecureRandom`, PHP's `random_bytes`/`random_int`) are not flagged, and non-security uses of the same insecure APIs (UI jitter, sampling, dice rolls) are left alone since they don't match the context heuristic. 10 new tests plus fixture coverage across all 6 languages. Built-in rule count: 13 → 14.
+
 ## [0.4.0] — 2026-07-05
 
 ### Added

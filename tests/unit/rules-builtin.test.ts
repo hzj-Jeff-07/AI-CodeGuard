@@ -691,6 +691,95 @@ describe('CG-021: Weak Cryptography (PHP)', () => {
   });
 });
 
+// ── CG-022: Insecure Randomness ──────────────────────────────────
+
+describe('CG-022: Insecure Randomness', () => {
+  it('detects Math.random() used to build a token', async () => {
+    const results = await scanCode('const token = Math.random().toString(36);');
+    expect(findByRule(results, 'CG-022').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores Math.random() used for non-security sampling', async () => {
+    const results = await scanCode('const jitter = Math.random() * 100;');
+    expect(findByRule(results, 'CG-022').length).toBe(0);
+  });
+});
+
+describe('CG-022: Insecure Randomness (Python)', () => {
+  it('detects random.choice() used to build a password', async () => {
+    const source = `import random
+def gen_password():
+    password = random.choice(chars)
+    return password`;
+    const results = await scanCode(source, 'python');
+    expect(findByRule(results, 'CG-022').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores random.choice() in a non-security context', async () => {
+    const source = `import random
+def pick_color():
+    return random.choice(colors)`;
+    const results = await scanCode(source, 'python');
+    expect(findByRule(results, 'CG-022').length).toBe(0);
+  });
+});
+
+describe('CG-022: Insecure Randomness (Go)', () => {
+  it('detects rand.Intn() used to build a session ID', async () => {
+    const source = `package main
+func generateSessionID() int {
+	return rand.Intn(1000000)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-022').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores rand.Intn() in a non-security context', async () => {
+    const source = `package main
+func rollDice() int {
+	return rand.Intn(6)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-022').length).toBe(0);
+  });
+});
+
+describe('CG-022: Insecure Randomness (Java)', () => {
+  it('detects new Random() used to build a password reset token', async () => {
+    const source = `class T {
+  String generateResetToken() {
+    Random random = new Random();
+    return String.valueOf(random.nextLong());
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-022').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores new SecureRandom()', async () => {
+    const source = `class T {
+  String generateResetToken() {
+    SecureRandom random = new SecureRandom();
+    return String.valueOf(random.nextLong());
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-022').length).toBe(0);
+  });
+});
+
+describe('CG-022: Insecure Randomness (PHP)', () => {
+  it('detects mt_rand() used to build an API key', async () => {
+    const results = await scanCode('<?php $apiKey = mt_rand(100000, 999999);', 'php');
+    expect(findByRule(results, 'CG-022').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores rand() in a non-security context', async () => {
+    const results = await scanCode('<?php $diceRoll = rand(1, 6);', 'php');
+    expect(findByRule(results, 'CG-022').length).toBe(0);
+  });
+});
+
 // ── CG-030: Path Traversal ──────────────────────────────────────
 
 describe('CG-030: Path Traversal', () => {

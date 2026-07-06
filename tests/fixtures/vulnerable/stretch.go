@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 )
@@ -50,4 +51,9 @@ func logLogin(password string) {
 // Vulnerable: Security Misconfiguration (CG-050) — TLS verification disabled
 func insecureClient() *tls.Config {
 	return &tls.Config{InsecureSkipVerify: true}
+}
+
+// Vulnerable: Insecure Randomness (CG-022) — math/rand used for a session ID
+func generateSessionID() int {
+	return rand.Intn(1000000)
 }

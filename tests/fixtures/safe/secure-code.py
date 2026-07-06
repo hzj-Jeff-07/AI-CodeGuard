@@ -28,3 +28,9 @@ from django.utils.safestring import mark_safe
 
 def render_banner():
     return mark_safe("<b>Welcome</b>")
+
+# Safe: cryptographic RNG for a reset token
+import secrets
+
+def generate_password_reset_token():
+    return secrets.token_hex(16)

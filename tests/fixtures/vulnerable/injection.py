@@ -32,3 +32,9 @@ from django.utils.safestring import mark_safe
 
 def render_comment(comment):
     return mark_safe(comment)
+
+# Vulnerable: Insecure Randomness (CG-022) - Python
+import random
+
+def generate_password_reset_token():
+    return random.choice(range(1000000))

@@ -107,7 +107,7 @@ describe('createRuleContext', () => {
 describe('getRules', () => {
   it('returns all rules with default options', () => {
     const rules = getRules();
-    expect(rules.length).toBe(13);
+    expect(rules.length).toBe(14);
   });
 
   it('returns empty array for preset none', () => {
@@ -117,19 +117,19 @@ describe('getRules', () => {
 
   it('returns all rules for preset owasp-top-10', () => {
     const rules = getRules({ preset: 'owasp-top-10' });
-    expect(rules.length).toBe(13);
+    expect(rules.length).toBe(14);
   });
 
   it('returns all rules for preset all', () => {
     const rules = getRules({ preset: 'all' });
-    expect(rules.length).toBe(13);
+    expect(rules.length).toBe(14);
   });
 
   it('disables specified rules', () => {
     const rules = getRules({ disable: ['CG-001', 'CG-010'] });
     expect(rules.find(r => r.id === 'CG-001')).toBeUndefined();
     expect(rules.find(r => r.id === 'CG-010')).toBeUndefined();
-    expect(rules.length).toBe(11);
+    expect(rules.length).toBe(12);
   });
 });
 
@@ -428,9 +428,9 @@ patterns:
 // ── getAllRuleIds / getRuleById ──────────────────────────────────
 
 describe('getAllRuleIds', () => {
-  it('returns all 13 rule IDs', () => {
+  it('returns all 14 rule IDs', () => {
     const ids = getAllRuleIds();
-    expect(ids.length).toBe(13);
+    expect(ids.length).toBe(14);
     expect(ids).toContain('CG-001');
     expect(ids).toContain('CG-060');
   });

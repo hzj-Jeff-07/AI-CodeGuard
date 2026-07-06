@@ -6,6 +6,7 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
+import java.util.Random;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
@@ -63,5 +64,11 @@ public class Stretch {
     // Vulnerable: Cross-Site Scripting (CG-010) — unescaped reflection to response
     public void echoName(HttpServletRequest request, HttpServletResponse response) throws Exception {
         response.getWriter().write(request.getParameter("name"));
+    }
+
+    // Vulnerable: Insecure Randomness (CG-022) — java.util.Random for a reset token
+    public String generatePasswordResetToken() {
+        Random random = new Random();
+        return String.valueOf(random.nextLong());
     }
 }
