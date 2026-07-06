@@ -457,6 +457,23 @@ describe('CG-003: Code Injection', () => {
     const results = await scanCode('myFunction(x)');
     expect(findByRule(results, 'CG-003').length).toBe(0);
   });
+
+  it("detects Python's built-in exec()", async () => {
+    const results = await scanCode('exec(user_input)', 'python');
+    expect(findByRule(results, 'CG-003').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not treat child_process.exec as code injection', async () => {
+    // .exec on a receiver is command execution (CG-002), not eval-style code
+    // injection — CG-003 must not claim it.
+    const results = await scanCode("child_process.exec('ls ' + dir)");
+    expect(findByRule(results, 'CG-003').length).toBe(0);
+  });
+
+  it('does not treat PHP exec() as code injection', async () => {
+    const results = await scanCode('<?php exec($cmd);', 'php');
+    expect(findByRule(results, 'CG-003').length).toBe(0);
+  });
 });
 
 // ── CG-024: NoSQL Injection ──────────────────────────────────────
