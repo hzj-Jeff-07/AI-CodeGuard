@@ -5,8 +5,10 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
+	"regexp"
 )
 
 // Vulnerable: Hardcoded Credentials (CG-020)
@@ -51,3 +53,11 @@ func logLogin(password string) {
 func insecureClient() *tls.Config {
 	return &tls.Config{InsecureSkipVerify: true}
 }
+
+// Vulnerable: Insecure Randomness (CG-022) — math/rand used for a session ID
+func generateSessionID() int {
+	return rand.Intn(1000000)
+}
+
+// Vulnerable: Insecure Regular Expression / ReDoS (CG-023)
+var emailPattern = regexp.MustCompile("^([a-zA-Z0-9]+)+@")

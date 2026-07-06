@@ -38,3 +38,15 @@ app.use((req, res, next) => {
   res.cookie('session', 'abc', { secure: true, httpOnly: true, sameSite: 'Strict' });
   next();
 });
+
+// Safe: cryptographic RNG for a security token
+import { randomBytes } from 'crypto';
+
+function generateSessionToken() {
+  return randomBytes(32).toString('hex');
+}
+
+// Safe: Math.random() used for non-security jitter
+function retryDelay() {
+  return Math.random() * 1000;
+}

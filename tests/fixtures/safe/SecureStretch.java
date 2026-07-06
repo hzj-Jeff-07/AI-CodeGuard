@@ -5,6 +5,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.util.regex.Pattern;
+import javax.servlet.http.HttpServletResponse;
 
 public class SecureStretch {
 
@@ -46,5 +49,21 @@ public class SecureStretch {
         http.csrf();
         cookie.setSecure(true);
         cookie.setHttpOnly(true);
+    }
+
+    // Safe: static response body, not attacker-controlled input
+    public void staticResponse(HttpServletResponse response) throws Exception {
+        response.getWriter().write("<html>OK</html>");
+    }
+
+    // Safe: cryptographic RNG for a reset token
+    public String generatePasswordResetToken() {
+        SecureRandom random = new SecureRandom();
+        return String.valueOf(random.nextLong());
+    }
+
+    // Safe: no nested/overlapping quantifiers
+    public Pattern emailPattern() {
+        return Pattern.compile("^[a-zA-Z0-9]+@");
     }
 }

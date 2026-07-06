@@ -483,6 +483,74 @@ describe('CG-010: Cross-Site Scripting (XSS)', () => {
   });
 });
 
+describe('CG-010: Cross-Site Scripting (XSS) (Python)', () => {
+  it('detects mark_safe with a variable argument', async () => {
+    const results = await scanCode('mark_safe(user_input)', 'python');
+    expect(findByRule(results, 'CG-010').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects Markup with an f-string argument', async () => {
+    const results = await scanCode('Markup(f"<b>{name}</b>")', 'python');
+    expect(findByRule(results, 'CG-010').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects render_template_string with a variable template', async () => {
+    const results = await scanCode('render_template_string(user_template)', 'python');
+    expect(findByRule(results, 'CG-010').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores mark_safe with a static string literal', async () => {
+    const results = await scanCode('mark_safe("<b>Bold</b>")', 'python');
+    expect(findByRule(results, 'CG-010').length).toBe(0);
+  });
+});
+
+describe('CG-010: Cross-Site Scripting (XSS) (Java)', () => {
+  it('detects response.getWriter().write(request.getParameter(...))', async () => {
+    const source = `class T {
+  void f(HttpServletResponse response, HttpServletRequest request) throws Exception {
+    response.getWriter().write(request.getParameter("name"));
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-010').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores response.getWriter().write with a static string literal', async () => {
+    const source = `class T {
+  void f(HttpServletResponse response) throws Exception {
+    response.getWriter().write("<html>OK</html>");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-010').length).toBe(0);
+  });
+
+  it('detects the two-step PrintWriter idiom (assignment, then println elsewhere)', async () => {
+    // Regression guard: the sink check previously required "getWriter" to
+    // appear textually in the same call expression, missing the standard
+    // JSP/servlet idiom of assigning the writer to a variable first.
+    const source = `class T {
+  void f(HttpServletResponse response, HttpServletRequest request) throws Exception {
+    PrintWriter out = response.getWriter();
+    out.println(request.getParameter("name"));
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-010').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a zero-argument println on the response writer', async () => {
+    const source = `class T {
+  void f(HttpServletResponse response) throws Exception {
+    response.getWriter().println();
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-010').length).toBe(0);
+  });
+});
+
 // ── CG-011: DOM-based XSS ──────────────────────────────────────
 
 describe('CG-011: DOM-based XSS', () => {
@@ -601,6 +669,117 @@ describe('CG-021: Weak Cryptography (Java)', () => {
   });
 });
 
+describe('CG-021: Weak Cryptography (PHP)', () => {
+  it('detects bare md5()', async () => {
+    const results = await scanCode('<?php $h = md5($password);', 'php');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects bare sha1()', async () => {
+    const results = await scanCode('<?php $h = sha1($password);', 'php');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("detects hash('md5', ...)", async () => {
+    const results = await scanCode("<?php $h = hash('md5', $password);", 'php');
+    expect(findByRule(results, 'CG-021').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("ignores hash('sha256', ...)", async () => {
+    const results = await scanCode("<?php $h = hash('sha256', $password);", 'php');
+    expect(findByRule(results, 'CG-021').length).toBe(0);
+  });
+});
+
+// ── CG-022: Insecure Randomness ──────────────────────────────────
+
+describe('CG-022: Insecure Randomness', () => {
+  it('detects Math.random() used to build a token', async () => {
+    const results = await scanCode('const token = Math.random().toString(36);');
+    expect(findByRule(results, 'CG-022').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores Math.random() used for non-security sampling', async () => {
+    const results = await scanCode('const jitter = Math.random() * 100;');
+    expect(findByRule(results, 'CG-022').length).toBe(0);
+  });
+});
+
+describe('CG-022: Insecure Randomness (Python)', () => {
+  it('detects random.choice() used to build a password', async () => {
+    const source = `import random
+def gen_password():
+    password = random.choice(chars)
+    return password`;
+    const results = await scanCode(source, 'python');
+    expect(findByRule(results, 'CG-022').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores random.choice() in a non-security context', async () => {
+    const source = `import random
+def pick_color():
+    return random.choice(colors)`;
+    const results = await scanCode(source, 'python');
+    expect(findByRule(results, 'CG-022').length).toBe(0);
+  });
+});
+
+describe('CG-022: Insecure Randomness (Go)', () => {
+  it('detects rand.Intn() used to build a session ID', async () => {
+    const source = `package main
+func generateSessionID() int {
+	return rand.Intn(1000000)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-022').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores rand.Intn() in a non-security context', async () => {
+    const source = `package main
+func rollDice() int {
+	return rand.Intn(6)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-022').length).toBe(0);
+  });
+});
+
+describe('CG-022: Insecure Randomness (Java)', () => {
+  it('detects new Random() used to build a password reset token', async () => {
+    const source = `class T {
+  String generateResetToken() {
+    Random random = new Random();
+    return String.valueOf(random.nextLong());
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-022').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores new SecureRandom()', async () => {
+    const source = `class T {
+  String generateResetToken() {
+    SecureRandom random = new SecureRandom();
+    return String.valueOf(random.nextLong());
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-022').length).toBe(0);
+  });
+});
+
+describe('CG-022: Insecure Randomness (PHP)', () => {
+  it('detects mt_rand() used to build an API key', async () => {
+    const results = await scanCode('<?php $apiKey = mt_rand(100000, 999999);', 'php');
+    expect(findByRule(results, 'CG-022').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores rand() in a non-security context', async () => {
+    const results = await scanCode('<?php $diceRoll = rand(1, 6);', 'php');
+    expect(findByRule(results, 'CG-022').length).toBe(0);
+  });
+});
+
 // ── CG-030: Path Traversal ──────────────────────────────────────
 
 describe('CG-030: Path Traversal', () => {
@@ -631,6 +810,114 @@ describe('CG-031: Arbitrary File Access', () => {
   it('ignores readFile with static path', async () => {
     const results = await scanCode('fs.readFile("config.json")');
     expect(findByRule(results, 'CG-031').length).toBe(0);
+  });
+
+  it('detects readFile when the path variable was assigned from req.query nearby', async () => {
+    const results = await scanCode('const p = req.query.path;\nfs.readFile(p);');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores readFile when the path variable was assigned from a static literal', async () => {
+    const results = await scanCode('const p = "config.json";\nfs.readFile(p);');
+    expect(findByRule(results, 'CG-031').length).toBe(0);
+  });
+});
+
+describe('CG-031: Arbitrary File Access (Go)', () => {
+  it('detects os.Open with a URL query parameter', async () => {
+    const source = `package main
+func f(r *http.Request) (*os.File, error) {
+	return os.Open(r.URL.Query().Get("path"))
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects os.ReadFile with a quoted gin c.Param(...) argument', async () => {
+    // Regression guard: the USER_INPUT_GO regex previously required a word
+    // character immediately after `c.Param(`/`c.Query(`, which a quoted
+    // string argument never satisfies — the overwhelmingly common real form.
+    const source = `package main
+func f(c *gin.Context) ([]byte, error) {
+	return os.ReadFile(c.Param("filename"))
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores os.Open with a static path', async () => {
+    const source = `package main
+func f() (*os.File, error) {
+	return os.Open("config.json")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-031').length).toBe(0);
+  });
+
+  it('detects os.Open when the path variable was assigned from a query param nearby', async () => {
+    const source = `package main
+func f(r *http.Request) (*os.File, error) {
+	path := r.URL.Query().Get("path")
+	return os.Open(path)
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('CG-031: Arbitrary File Access (Java)', () => {
+  it('detects new File(request.getParameter(...))', async () => {
+    const source = `class T {
+  File f(HttpServletRequest request) {
+    return new File(request.getParameter("path"));
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores new File with a static path', async () => {
+    const source = `class T {
+  File f() {
+    return new File("config.json");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-031').length).toBe(0);
+  });
+
+  it('detects new File when the path variable was assigned from getParameter nearby', async () => {
+    const source = `class T {
+  File f(HttpServletRequest request) {
+    String path = request.getParameter("path");
+    return new File(path);
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('CG-031: Arbitrary File Access (PHP)', () => {
+  it('detects file_get_contents with $_GET input', async () => {
+    const results = await scanCode(
+      '<?php $data = file_get_contents($_GET["path"]);', 'php'
+    );
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores file_get_contents with a static path', async () => {
+    const results = await scanCode(
+      '<?php $data = file_get_contents("config.json");', 'php'
+    );
+    expect(findByRule(results, 'CG-031').length).toBe(0);
+  });
+
+  it('detects file_get_contents when the path variable was assigned from $_GET nearby', async () => {
+    const results = await scanCode(
+      '<?php $path = $_GET["path"];\n$data = file_get_contents($path);', 'php'
+    );
+    expect(findByRule(results, 'CG-031').length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -726,6 +1013,33 @@ describe('CG-040: Sensitive Data Exposure (Java)', () => {
   });
 });
 
+describe('CG-040: Sensitive Data Exposure (PHP)', () => {
+  it('detects error_log logging a password', async () => {
+    const results = await scanCode('<?php error_log("password=" . $password);', 'php');
+    expect(findByRule(results, 'CG-040').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("detects Log::error (Laravel-style facade) logging a token", async () => {
+    const results = await scanCode('<?php Log::error("token=" . $token);', 'php');
+    expect(findByRule(results, 'CG-040').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects $logger->info logging a secret', async () => {
+    const results = await scanCode('<?php $logger->info("secret: " . $secret);', 'php');
+    expect(findByRule(results, 'CG-040').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores logging non-sensitive data', async () => {
+    const results = await scanCode('<?php $logger->info("server started");', 'php');
+    expect(findByRule(results, 'CG-040').length).toBe(0);
+  });
+
+  it('detects a differently-cased bare error_log call (PHP function names are case-insensitive)', async () => {
+    const results = await scanCode('<?php Error_Log("password=" . $password);', 'php');
+    expect(findByRule(results, 'CG-040').length).toBeGreaterThanOrEqual(1);
+  });
+});
+
 // ── CG-041: Insecure Deserialization ────────────────────────────
 
 describe('CG-041: Insecure Deserialization', () => {
@@ -763,6 +1077,27 @@ describe('CG-041: Insecure Deserialization (Java)', () => {
   }
 }`;
     const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-041').length).toBe(0);
+  });
+});
+
+describe('CG-041: Insecure Deserialization (PHP)', () => {
+  it('detects bare unserialize()', async () => {
+    const results = await scanCode('<?php $obj = unserialize($data);', 'php');
+    expect(findByRule(results, 'CG-041').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores unrelated function calls', async () => {
+    const results = await scanCode('<?php $s = trim($data);', 'php');
+    expect(findByRule(results, 'CG-041').length).toBe(0);
+  });
+
+  it('ignores a method named unserialize() on an object (Serializable interface)', async () => {
+    // Regression guard: PHP's dangerous global unserialize() takes no
+    // receiver. A class implementing the standard Serializable interface
+    // defines its own unserialize() method, which is an unrelated, benign
+    // pattern that happens to share the name.
+    const results = await scanCode('<?php $session->unserialize($data);', 'php');
     expect(findByRule(results, 'CG-041').length).toBe(0);
   });
 });
@@ -856,6 +1191,107 @@ describe('CG-050: Security Misconfiguration (Java)', () => {
 }`;
     const results = await scanCode(source, 'java');
     expect(findByRule(results, 'CG-050').length).toBe(0);
+  });
+});
+
+describe('CG-050: Security Misconfiguration (PHP)', () => {
+  it('detects CURLOPT_SSL_VERIFYPEER disabled', async () => {
+    const results = await scanCode(
+      '<?php curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);', 'php'
+    );
+    expect(findByRule(results, 'CG-050').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("detects ini_set('display_errors', 1)", async () => {
+    const results = await scanCode("<?php ini_set('display_errors', 1);", 'php');
+    expect(findByRule(results, 'CG-050').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores CURLOPT_SSL_VERIFYPEER enabled', async () => {
+    const results = await scanCode(
+      '<?php curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);', 'php'
+    );
+    expect(findByRule(results, 'CG-050').length).toBe(0);
+  });
+});
+
+// ── CG-023: Insecure Regular Expression (ReDoS) ─────────────────
+
+describe('CG-023: Insecure Regular Expression (ReDoS)', () => {
+  it('detects new RegExp with a nested quantifier', async () => {
+    const results = await scanCode('new RegExp("(a+)+")');
+    expect(findByRule(results, 'CG-023').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores new RegExp with a benign pattern', async () => {
+    const results = await scanCode('new RegExp("a+b")');
+    expect(findByRule(results, 'CG-023').length).toBe(0);
+  });
+});
+
+describe('CG-023: Insecure Regular Expression (ReDoS) (Python)', () => {
+  it("detects re.compile with a nested quantifier", async () => {
+    const results = await scanCode('re.compile(r"(a+)+")', 'python');
+    expect(findByRule(results, 'CG-023').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores an unrelated .split() call (not the re module)', async () => {
+    const results = await scanCode('s.split(",")', 'python');
+    expect(findByRule(results, 'CG-023').length).toBe(0);
+  });
+});
+
+describe('CG-023: Insecure Regular Expression (ReDoS) (Go)', () => {
+  it('detects regexp.MustCompile with a nested quantifier', async () => {
+    const source = `package main
+func f() {
+	regexp.MustCompile("(a+)+")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-023').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores regexp.MustCompile with a benign pattern', async () => {
+    const source = `package main
+func f() {
+	regexp.MustCompile("a+b")
+}`;
+    const results = await scanCode(source, 'go');
+    expect(findByRule(results, 'CG-023').length).toBe(0);
+  });
+});
+
+describe('CG-023: Insecure Regular Expression (ReDoS) (Java)', () => {
+  it('detects Pattern.compile with a nested quantifier', async () => {
+    const source = `class T {
+  void f() {
+    Pattern.compile("(a+)+");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-023').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores Pattern.compile with a benign pattern', async () => {
+    const source = `class T {
+  void f() {
+    Pattern.compile("a+b");
+  }
+}`;
+    const results = await scanCode(source, 'java');
+    expect(findByRule(results, 'CG-023').length).toBe(0);
+  });
+});
+
+describe('CG-023: Insecure Regular Expression (ReDoS) (PHP)', () => {
+  it('detects preg_match with a nested quantifier', async () => {
+    const results = await scanCode('<?php preg_match("/(a+)+/", $s);', 'php');
+    expect(findByRule(results, 'CG-023').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores preg_match with a benign pattern', async () => {
+    const results = await scanCode('<?php preg_match("/a+b/", $s);', 'php');
+    expect(findByRule(results, 'CG-023').length).toBe(0);
   });
 });
 

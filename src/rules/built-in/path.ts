@@ -1,5 +1,6 @@
-import type { ASTNode, SuspiciousNode } from '../../types/index.js';
+import type { ASTNode, CallInfo, Language, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
+import { findOuterArgumentsStart } from '../../parser/languages/shared.js';
 
 const PATH_FUNCTIONS_JS = ['readFile', 'readFileSync', 'writeFile', 'writeFileSync',
   'createReadStream', 'createWriteStream', 'access', 'accessSync', 'open', 'openSync',
@@ -21,6 +22,24 @@ const PATH_OBJECTS_JAVA = ['Files', 'Paths', 'Path'];
 const PATH_FUNCTIONS_PHP = ['file_get_contents', 'file_put_contents', 'fopen', 'readfile',
   'unlink', 'copy', 'rename', 'mkdir', 'rmdir', 'is_file', 'file_exists'];
 
+// Each language's file-operation matcher, keyed by language so adding a new
+// one is a single map entry instead of another branch in an if/else chain.
+// `javascript`/`typescript` share the default (no entry needed).
+const PATH_OP_MATCHERS: Partial<Record<Language, (call: CallInfo) => boolean>> = {
+  go: call => PATH_FUNCTIONS_GO.includes(call.name)
+    && call.object !== null && PATH_OBJECTS_GO.includes(call.object),
+  java: call => {
+    const isConstructor = !call.object && PATH_CONSTRUCTORS_JAVA.includes(call.name);
+    const isStaticHelper = call.object !== null
+      && PATH_OBJECTS_JAVA.includes(call.object)
+      && PATH_METHODS_JAVA.includes(call.name);
+    return isConstructor || isStaticHelper;
+  },
+  php: call => call.object === null && PATH_FUNCTIONS_PHP.includes(call.name),
+  python: call => PATH_FUNCTIONS_PY.includes(call.name),
+};
+const DEFAULT_PATH_OP_MATCHER = (call: CallInfo): boolean => PATH_FUNCTIONS_JS.includes(call.name);
+
 export const pathTraversal: BuiltInRule = {
   id: 'CG-030',
   name: 'Path Traversal',
@@ -35,21 +54,8 @@ export const pathTraversal: BuiltInRule = {
     const call = ctx.extractCallInfo(node);
     if (!call) return null;
 
-    if (ctx.language === 'go') {
-      if (!PATH_FUNCTIONS_GO.includes(call.name)) return null;
-      if (!call.object || !PATH_OBJECTS_GO.includes(call.object)) return null;
-    } else if (ctx.language === 'java') {
-      const isConstructor = !call.object && PATH_CONSTRUCTORS_JAVA.includes(call.name);
-      const isStaticHelper = call.object !== null
-        && PATH_OBJECTS_JAVA.includes(call.object)
-        && PATH_METHODS_JAVA.includes(call.name);
-      if (!isConstructor && !isStaticHelper) return null;
-    } else if (ctx.language === 'php') {
-      if (call.object !== null || !PATH_FUNCTIONS_PHP.includes(call.name)) return null;
-    } else {
-      const fns = ctx.language === 'python' ? PATH_FUNCTIONS_PY : PATH_FUNCTIONS_JS;
-      if (!fns.includes(call.name)) return null;
-    }
+    const matcher = PATH_OP_MATCHERS[ctx.language] ?? DEFAULT_PATH_OP_MATCHER;
+    if (!matcher(call)) return null;
 
     const hasDynamic = node.children.some(
       c => c.type === 'template_string' || c.type === 'string_concat'
@@ -86,12 +92,73 @@ export const pathTraversal: BuiltInRule = {
   },
 };
 
+// The path is passed by variable, not inline (`path := r.URL.Query...; os.Open(path)`),
+// so the direct-text check below never sees the user-input pattern. If the
+// argument is a bare identifier, check whether it was itself assigned from a
+// user-input source nearby.
+function firstArgIdentifier(fullExpression: string): string | null {
+  const argsStart = findOuterArgumentsStart(fullExpression);
+  if (argsStart === -1) return null;
+  const argsText = fullExpression.slice(argsStart + 1, fullExpression.lastIndexOf(')')).trim();
+  const firstArg = argsText.split(',')[0].trim();
+  return /^\$?[A-Za-z_][A-Za-z0-9_]*$/.test(firstArg) ? firstArg : null;
+}
+
+interface FileAccessConfig {
+  matchesTarget: (call: CallInfo) => boolean;
+  userInputPattern: RegExp;
+}
+
+const READ_WRITE_FN = ['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'open'];
+const USER_INPUT_JS_PY = /\b(req\.|params\.|query\.|body\.|request\.|args\.|argv)/;
+
+const READ_WRITE_GO = ['Open', 'OpenFile', 'Create', 'ReadFile', 'WriteFile'];
+const READ_WRITE_OBJECTS_GO = ['os', 'ioutil'];
+// net/http's Request fields and common router libs (gorilla/mux, gin) are the
+// usual sources of attacker-controlled path segments in Go web handlers.
+const USER_INPUT_GO = /\b(r\.URL\.Query|r\.FormValue|r\.PostFormValue|mux\.Vars|c\.Param|c\.Query|os\.Args)\b/;
+
+const READ_WRITE_CONSTRUCTORS_JAVA = ['File', 'FileInputStream', 'FileOutputStream',
+  'FileReader', 'FileWriter'];
+const READ_WRITE_METHODS_JAVA = ['readAllBytes', 'write', 'newInputStream', 'newOutputStream'];
+const READ_WRITE_OBJECTS_JAVA = ['Files', 'Paths', 'Path'];
+const USER_INPUT_JAVA = /\b(getParameter|getHeader|getQueryString)\b/;
+
+const READ_WRITE_PHP = ['file_get_contents', 'file_put_contents', 'fopen', 'readfile'];
+const USER_INPUT_PHP = /\$_(GET|POST|REQUEST|COOKIE)\b/;
+
+const FILE_ACCESS_CONFIG: Partial<Record<Language, FileAccessConfig>> = {
+  go: {
+    matchesTarget: call => READ_WRITE_GO.includes(call.name)
+      && call.object !== null && READ_WRITE_OBJECTS_GO.includes(call.object),
+    userInputPattern: USER_INPUT_GO,
+  },
+  java: {
+    matchesTarget: call => {
+      const isConstructor = !call.object && READ_WRITE_CONSTRUCTORS_JAVA.includes(call.name);
+      const isStaticHelper = call.object !== null
+        && READ_WRITE_OBJECTS_JAVA.includes(call.object)
+        && READ_WRITE_METHODS_JAVA.includes(call.name);
+      return isConstructor || isStaticHelper;
+    },
+    userInputPattern: USER_INPUT_JAVA,
+  },
+  php: {
+    matchesTarget: call => call.object === null && READ_WRITE_PHP.includes(call.name),
+    userInputPattern: USER_INPUT_PHP,
+  },
+};
+const DEFAULT_FILE_ACCESS_CONFIG: FileAccessConfig = {
+  matchesTarget: call => READ_WRITE_FN.includes(call.name),
+  userInputPattern: USER_INPUT_JS_PY,
+};
+
 export const arbitraryFileAccess: BuiltInRule = {
   id: 'CG-031',
   name: 'Arbitrary File Read/Write',
   severity: 'high',
   category: 'path',
-  languages: ['javascript', 'typescript', 'python'],
+  languages: ['javascript', 'typescript', 'python', 'go', 'java', 'php'],
   description: 'Detects file read/write operations where the path comes from external input.',
 
   check(node: ASTNode, ctx: RuleCheckContext): SuspiciousNode | null {
@@ -100,12 +167,17 @@ export const arbitraryFileAccess: BuiltInRule = {
     const call = ctx.extractCallInfo(node);
     if (!call) return null;
 
-    const readWrite = ['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'open'];
-    if (!readWrite.includes(call.name)) return null;
+    const config = FILE_ACCESS_CONFIG[ctx.language] ?? DEFAULT_FILE_ACCESS_CONFIG;
+    if (!config.matchesTarget(call)) return null;
 
-    // Check if path argument references req, params, query, body
+    // Check if the path argument references a source of external input,
+    // either inline or (for a bare identifier argument) via a nearby assignment.
     const text = call.fullExpression;
-    const hasUserInput = /\b(req\.|params\.|query\.|body\.|request\.|args\.|argv)/.test(text);
+    let hasUserInput = config.userInputPattern.test(text);
+    if (!hasUserInput) {
+      const argName = firstArgIdentifier(text);
+      hasUserInput = argName !== null && ctx.wasAssignedFrom(argName, config.userInputPattern, node);
+    }
     if (!hasUserInput) return null;
 
     return {

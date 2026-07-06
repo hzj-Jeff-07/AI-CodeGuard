@@ -18,3 +18,8 @@ function weakEncrypt(data: string, key: string) {
 function sha1Hash(input: string) {
   return crypto.createHash('sha1').update(input).digest('hex');
 }
+
+// Vulnerable: Insecure Randomness (CG-022)
+function generatePasswordResetToken() {
+  return Math.random().toString(36).slice(2);
+}

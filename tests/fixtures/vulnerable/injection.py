@@ -26,3 +26,21 @@ def load_data(data):
 
 def load_config(config_str):
     return yaml.load(config_str)
+
+# Vulnerable: Cross-Site Scripting (CG-010) - Python
+from django.utils.safestring import mark_safe
+
+def render_comment(comment):
+    return mark_safe(comment)
+
+# Vulnerable: Insecure Randomness (CG-022) - Python
+import random
+
+def generate_password_reset_token():
+    return random.choice(range(1000000))
+
+# Vulnerable: Insecure Regular Expression / ReDoS (CG-023) - Python
+import re
+
+def is_valid_email(value):
+    return re.compile(r"^([a-zA-Z0-9]+)+@").match(value)

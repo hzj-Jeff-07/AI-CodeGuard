@@ -356,14 +356,6 @@ function makeCallNode(text: string) {
 }
 
 describe('goAdapter', () => {
-  it('maps Go raw types to standard types', () => {
-    const adapter = getAdapter('go');
-    expect(adapter.mapNodeType('call_expression')).toBe('function_call');
-    expect(adapter.mapNodeType('short_var_declaration')).toBe('assignment');
-    expect(adapter.mapNodeType('interpreted_string_literal')).toBe('literal');
-    expect(adapter.mapNodeType('mystery_node')).toBe('unknown');
-  });
-
   it('extracts receiver and name from package-qualified calls', () => {
     const info = getAdapter('go').extractCallInfo(makeCallNode('exec.Command("sh", "-c", cmd)'));
     expect(info?.name).toBe('Command');
@@ -378,14 +370,6 @@ describe('goAdapter', () => {
 });
 
 describe('javaAdapter', () => {
-  it('maps Java raw types to standard types', () => {
-    const adapter = getAdapter('java');
-    expect(adapter.mapNodeType('method_invocation')).toBe('function_call');
-    expect(adapter.mapNodeType('object_creation_expression')).toBe('function_call');
-    expect(adapter.mapNodeType('variable_declarator')).toBe('assignment');
-    expect(adapter.mapNodeType('mystery_node')).toBe('unknown');
-  });
-
   it('strips the new keyword from constructor callees', () => {
     const info = getAdapter('java').extractCallInfo(makeCallNode('new ProcessBuilder("sh", "-c", cmd)'));
     expect(info?.name).toBe('ProcessBuilder');
@@ -406,15 +390,6 @@ describe('javaAdapter', () => {
 });
 
 describe('phpAdapter', () => {
-  it('maps PHP raw types to standard types', () => {
-    const adapter = getAdapter('php');
-    expect(adapter.mapNodeType('function_call_expression')).toBe('function_call');
-    expect(adapter.mapNodeType('member_call_expression')).toBe('function_call');
-    expect(adapter.mapNodeType('scoped_call_expression')).toBe('function_call');
-    expect(adapter.mapNodeType('assignment_expression')).toBe('assignment');
-    expect(adapter.mapNodeType('mystery_node')).toBe('unknown');
-  });
-
   it('extracts bare function calls without an object', () => {
     const info = getAdapter('php').extractCallInfo(makeCallNode('mysqli_query($conn, $sql)'));
     expect(info?.name).toBe('mysqli_query');
@@ -493,18 +468,6 @@ describe('walkAST', () => {
 // ── Language Adapters ────────────────────────────────────────────
 
 describe('javascriptAdapter', () => {
-  it('maps call_expression to function_call', () => {
-    expect(javascriptAdapter.mapNodeType('call_expression')).toBe('function_call');
-  });
-
-  it('maps template_literal to template_string', () => {
-    expect(javascriptAdapter.mapNodeType('template_literal')).toBe('template_string');
-  });
-
-  it('maps unknown raw types to unknown', () => {
-    expect(javascriptAdapter.mapNodeType('some_random_type')).toBe('unknown');
-  });
-
   it('extracts call info from function_call node', () => {
     const node = {
       type: 'function_call' as const,
@@ -554,25 +517,9 @@ describe('typescriptAdapter', () => {
   it('has language typescript', () => {
     expect(typescriptAdapter.language).toBe('typescript');
   });
-
-  it('shares mapNodeType with javascript adapter', () => {
-    expect(typescriptAdapter.mapNodeType('call_expression')).toBe('function_call');
-  });
 });
 
 describe('pythonAdapter', () => {
-  it('maps call to function_call', () => {
-    expect(pythonAdapter.mapNodeType('call')).toBe('function_call');
-  });
-
-  it('maps f_string to template_string', () => {
-    expect(pythonAdapter.mapNodeType('f_string')).toBe('template_string');
-  });
-
-  it('maps function_definition to function_def', () => {
-    expect(pythonAdapter.mapNodeType('function_definition')).toBe('function_def');
-  });
-
   it('extracts call info from Python function call', () => {
     const node = {
       type: 'function_call' as const,

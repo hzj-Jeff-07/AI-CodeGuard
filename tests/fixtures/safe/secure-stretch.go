@@ -1,11 +1,13 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 )
 
 // Safe: credentials come from the environment
@@ -38,3 +40,13 @@ func logStartup() {
 func secureClient() *tls.Config {
 	return &tls.Config{InsecureSkipVerify: false}
 }
+
+// Safe: cryptographic RNG for a session token
+func generateSessionToken() ([]byte, error) {
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	return b, err
+}
+
+// Safe: no nested/overlapping quantifiers
+var emailPattern = regexp.MustCompile("^[a-zA-Z0-9]+@")

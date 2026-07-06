@@ -1,34 +1,9 @@
-import type { LanguageAdapter, StandardNodeType, ASTNode, CallInfo } from '../../types/index.js';
+import type { LanguageAdapter, ASTNode, CallInfo } from '../../types/index.js';
 import { findOuterArgumentsStart } from './shared.js';
-
-const NODE_TYPE_MAP: Record<string, StandardNodeType> = {
-  'function_call_expression': 'function_call',
-  'member_call_expression': 'function_call',
-  'nullsafe_member_call_expression': 'function_call',
-  'scoped_call_expression': 'function_call',
-  'object_creation_expression': 'function_call',
-  'binary_expression': 'binary_op',
-  'assignment_expression': 'assignment',
-  'namespace_use_declaration': 'import',
-  'function_definition': 'function_def',
-  'method_declaration': 'function_def',
-  'class_declaration': 'class_def',
-  'member_access_expression': 'member_access',
-  'nullsafe_member_access_expression': 'member_access',
-  'variable_name': 'identifier',
-  'name': 'identifier',
-  'string': 'literal',
-  'encapsed_string': 'literal',
-  'integer': 'literal',
-};
 
 export const phpAdapter: LanguageAdapter = {
   language: 'php',
   fileExtensions: ['.php'],
-
-  mapNodeType(rawType: string): StandardNodeType {
-    return NODE_TYPE_MAP[rawType] ?? 'unknown';
-  },
 
   extractCallInfo(node: ASTNode): CallInfo | null {
     if (node.type !== 'function_call') return null;
