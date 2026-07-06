@@ -1,6 +1,6 @@
 import type { Finding, ScanResult } from '../types/index.js';
 import { VERSION } from '../version.js';
-import { cweLabel } from '../rules/cwe.js';
+import { cweForRule, cweHelpUri, cweLabel } from '../rules/cwe.js';
 
 export function formatJSON(result: ScanResult): string {
   const output = {
@@ -22,10 +22,12 @@ export function formatJSON(result: ScanResult): string {
 }
 
 function serializeFinding(f: Finding) {
+  const cwe = cweForRule(f.ruleId);
   return {
     id: f.id,
     ruleId: f.ruleId,
     cwe: cweLabel(f.ruleId),
+    cweUri: cwe !== undefined ? cweHelpUri(cwe) : null,
     severity: f.severity,
     title: f.title,
     description: f.description,

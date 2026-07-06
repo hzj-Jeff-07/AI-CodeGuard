@@ -82,13 +82,15 @@ describe('formatJSON', () => {
     expect(parsed.findings[0].file).toBe('src/db.ts');
   });
 
-  it('includes the CWE label per finding (null for unmapped custom rules)', () => {
+  it('includes the CWE label and MITRE URI per finding (null for unmapped custom rules)', () => {
     const parsed = JSON.parse(formatJSON(makeScanResult([
       makeFinding({ ruleId: 'CG-001' }),
       makeFinding({ id: 'f2', ruleId: 'CR-999' }),
     ])));
     expect(parsed.findings[0].cwe).toBe('CWE-89');
+    expect(parsed.findings[0].cweUri).toBe('https://cwe.mitre.org/data/definitions/89.html');
     expect(parsed.findings[1].cwe).toBeNull();
+    expect(parsed.findings[1].cweUri).toBeNull();
   });
 
   it('handles empty findings', () => {
