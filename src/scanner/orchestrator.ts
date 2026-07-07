@@ -9,6 +9,7 @@ import { generateReport } from '../reporter/index.js';
 import { analyzeFindings, type AnalyzeFindingsDependencies } from '../analyzer/index.js';
 import { FileCacheStore } from '../cache/index.js';
 import { filterSuppressed } from './suppression.js';
+import { filterAgainstBaseline, loadBaseline } from './baseline.js';
 
 export interface ScanOptions {
   paths: string[];
@@ -21,6 +22,8 @@ export interface ScanOptions {
   minSeverity?: Severity;
   /** Apply inline `codeguard-ignore` directives. Default true; set false to audit what they hide. */
   inlineSuppression?: boolean;
+  /** Path to a baseline file — findings covered by it are dropped (only new findings reported). */
+  baselinePath?: string;
 }
 
 export async function scan(
@@ -74,7 +77,26 @@ export async function scan(
     }
   }
 
-  const stage1Findings = createStage1Findings(allSuspicious, rules);
+  let stage1Findings = createStage1Findings(allSuspicious, rules);
+  let allSuspiciousKept = allSuspicious;
+  let baselined = 0;
+
+  if (options.baselinePath) {
+    // Filter finding/suspicious pairs in tandem (they map 1:1 by index) so
+    // baselined findings never reach Stage 2 — no wasted LLM calls.
+    const baseline = await loadBaseline(options.baselinePath);
+    const indexed = stage1Findings.map((finding, index) => ({
+      ruleId: finding.ruleId,
+      file: finding.file,
+      snippet: finding.snippet,
+      index,
+    }));
+    const filtered = filterAgainstBaseline(indexed, baseline);
+    baselined = filtered.baselined;
+    const keptIndexes = new Set(filtered.kept.map(entry => entry.index));
+    stage1Findings = stage1Findings.filter((_, index) => keptIndexes.has(index));
+    allSuspiciousKept = allSuspicious.filter((_, index) => keptIndexes.has(index));
+  }
 
   let findings = stage1Findings;
   let dismissedFindings: Finding[] = [];
@@ -82,7 +104,7 @@ export async function scan(
   let estimatedCost = 0;
   let cacheHits = 0;
 
-  if (!options.dryRun && allSuspicious.length > 0) {
+  if (!options.dryRun && allSuspiciousKept.length > 0) {
     const mergedDependencies: AnalyzeFindingsDependencies = { ...dependencies };
     if (!mergedDependencies.cache && options.config.cache.enabled) {
       mergedDependencies.cache = new FileCacheStore({
@@ -93,7 +115,7 @@ export async function scan(
 
     const analyzed = await analyzeFindings({
       findings: stage1Findings,
-      suspiciousNodes: allSuspicious,
+      suspiciousNodes: allSuspiciousKept,
       llm: options.config.llm,
       fix: options.fix,
     }, mergedDependencies);
@@ -114,6 +136,7 @@ export async function scan(
     files: files.length,
     suspicious: allSuspicious.length,
     suppressed,
+    baselined,
     findings,
     dismissedFindings,
     skipped,

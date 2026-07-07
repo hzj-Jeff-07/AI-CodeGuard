@@ -10,6 +10,7 @@ function makeScanResult(findings: Finding[] = [], overrides: Partial<ScanResult>
     files: 3,
     suspicious: findings.length,
     suppressed: 0,
+    baselined: 0,
     findings,
     skipped: [],
     duration: 1234,
@@ -208,6 +209,17 @@ describe('formatSARIF', () => {
     expect(rule.properties.tags).toContain('external/cwe/cwe-89');
     expect(rule.properties['security-severity']).toBe('9.0');
     expect(rule.helpUri).toBe('https://cwe.mitre.org/data/definitions/89.html');
+  });
+
+  it('emits a line-independent partialFingerprint per result', () => {
+    const sarif = JSON.parse(formatSARIF(makeScanResult([makeFinding()])));
+    const fp = sarif.runs[0].results[0].partialFingerprints['codeguardFingerprint/v1'];
+    expect(fp).toMatch(/^[0-9a-f]{16}$/);
+
+    // Same finding on a different line -> same fingerprint.
+    const moved = makeFinding({ location: { start: { line: 99, column: 0 }, end: { line: 99, column: 50 } } });
+    const sarif2 = JSON.parse(formatSARIF(makeScanResult([moved])));
+    expect(sarif2.runs[0].results[0].partialFingerprints['codeguardFingerprint/v1']).toBe(fp);
   });
 
   it('still tags a rule with no CWE mapping as security (no cwe tag / helpUri)', () => {

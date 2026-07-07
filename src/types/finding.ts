@@ -43,6 +43,8 @@ export interface ScanResult {
   suspicious: number;
   /** Count of Stage 1 findings silenced by inline `codeguard-ignore` directives. */
   suppressed: number;
+  /** Count of findings absorbed by the baseline file (only new findings are reported). */
+  baselined: number;
   findings: Finding[];
   /** Stage 1 findings dismissed by Stage 2 LLM analysis — kept so suppressions stay auditable */
   dismissedFindings?: Finding[];

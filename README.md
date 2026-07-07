@@ -89,6 +89,36 @@ node dist/index.js rules validate ./custom-rules
 node dist/index.js rules test ./custom-rules ./src --output json
 ```
 
+### Measuring precision
+
+Unit tests assert single-pattern behavior; the **precision corpus** (`tests/corpus/`) measures the scanner on realistic mixed code. Vulnerable lines carry ground-truth `codeguard-expect CG-XXX` annotations (including cases the flat-node model is known to miss, kept honest as FNs), and tricky-but-safe code is asserted clean. `npm run precision` prints TP/FN/FP with precision/recall, and a ratchet test fails CI if either metric drops below the current baseline (precision ≥ 95%, recall ≥ 90%).
+
+### Adopting on an existing codebase (baseline)
+
+On a legacy codebase the first scan can produce dozens of historical findings, drowning out anything new. Snapshot them once, then ratchet on "no *new* findings":
+
+```bash
+# Acknowledge the current findings (writes .codeguard-baseline.json; exits 0)
+node dist/index.js scan ./src --dry-run --write-baseline
+
+# From now on, only findings NOT in the baseline are reported / fail the build
+node dist/index.js scan ./src --dry-run --baseline .codeguard-baseline.json
+```
+
+Baseline fingerprints hash the rule + file + normalized snippet — **no line numbers** — so unrelated edits that shift code up or down don't resurrect acknowledged findings, while any genuinely new finding (or an extra copy of an acknowledged one) still surfaces. The scan reports how many findings the baseline absorbed (`scan.baselined` in JSON, a summary line in text). Commit the baseline file and shrink it over time as findings get fixed.
+
+Two rules of thumb: **always run scans from the repository root** (fingerprints embed cwd-relative paths, so a different working directory silently mismatches the whole baseline), and write baselines from *unfiltered* scans (`--write-baseline` rejects `--severity` for this reason; Stage 2 dismissals are included in the snapshot so later runs don't re-pay to re-triage them).
+
+### Measuring Stage 2 triage accuracy
+
+The two-stage design's core claim — the LLM confirms real vulnerabilities and dismisses Stage 1 false positives — is measured, not assumed. `tests/corpus-triage/` labels every Stage 1 finding with a ground-truth verdict (`codeguard-real` should be confirmed, `codeguard-fp` should be dismissed — including planted FP bait like `eval('2 + 2')`, `setInterval(fn, ...)`, and timing-jitter `Math.random`). The harness runs the full production `scan()` pipeline and reports **confirm-recall**, **fp-dismiss-rate**, and **triage accuracy**:
+
+```bash
+CODEGUARD_E2E=1 ANTHROPIC_API_KEY=sk-... npm run triage
+```
+
+Offline runs validate the harness arithmetic with scripted providers; the real-model measurement is opt-in (defaults to Haiku, override with `CODEGUARD_E2E_MODEL`). An integrity check fails if the corpus and rules drift apart (unlabeled findings, or labels that no longer fire). One measurement caveat: when an LLM call errors, the pipeline conservatively keeps the finding (fail-open toward reporting), which counts as a confirm — so provider outages inflate confirm-recall rather than silently dropping findings.
+
 ### Suppressing a finding
 
 Silence a specific finding with an inline comment (any language's comment syntax works). A bare directive suppresses every rule on the line; add rule IDs to scope it, and anything after the IDs is treated as a free-text reason:

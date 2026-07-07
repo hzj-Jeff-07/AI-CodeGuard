@@ -103,6 +103,37 @@ describe('Scanner orchestrator', () => {
     });
   });
 
+  it('absorbs baselined findings and reports only new ones, surviving line shifts', async () => {
+    await withTempDir(async tempDir => {
+      const file = resolve(tempDir, 'app.js');
+      const baselinePath = resolve(tempDir, 'baseline.json');
+      await writeFile(file, [
+        'pool.query(`SELECT * FROM users WHERE id = ${a}`);',
+        'res.redirect(req.query.next);',
+      ].join('\n'));
+
+      // Snapshot the current findings.
+      const first = await runMuted(() => scan(makeOptions([file])));
+      expect(first.findings.length).toBe(2);
+      const { writeBaseline } = await import('../../src/scanner/baseline.js');
+      await writeBaseline(first.findings, baselinePath);
+
+      // Shift everything down and add one genuinely new vulnerability.
+      await writeFile(file, [
+        '// pushed down by new comments',
+        '',
+        'pool.query(`SELECT * FROM users WHERE id = ${a}`);',
+        'res.redirect(req.query.next);',
+        'eval(userInput);',
+      ].join('\n'));
+
+      const second = await runMuted(() => scan(makeOptions([file], { baselinePath })));
+      expect(second.baselined).toBe(2);
+      expect(second.findings).toHaveLength(1);
+      expect(second.findings[0].ruleId).toBe('CG-003');
+    });
+  });
+
   it('reports suppressed findings again when inlineSuppression is disabled', async () => {
     await withTempDir(async tempDir => {
       const file = resolve(tempDir, 'sample.js');

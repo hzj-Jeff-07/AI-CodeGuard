@@ -1,6 +1,7 @@
 import type { Finding, ScanResult, Severity } from '../types/index.js';
 import { VERSION } from '../version.js';
 import { cweForRule, cweHelpUri, securitySeverityScore } from '../rules/cwe.js';
+import { fingerprintFinding } from '../scanner/baseline.js';
 
 interface SarifLog {
   $schema: string;
@@ -37,6 +38,7 @@ interface SarifResult {
   level: string;
   message: { text: string; markdown?: string };
   locations: SarifLocation[];
+  partialFingerprints: Record<string, string>;
   fixes?: SarifFix[];
 }
 
@@ -116,6 +118,10 @@ export function formatSARIF(result: ScanResult): string {
         const sarifResult: SarifResult = {
           ruleId: f.ruleId,
           level: severityToLevel(f.severity),
+          // Line-number-independent fingerprint (same one baseline files use)
+          // so SARIF consumers like GitHub Code Scanning keep an alert's
+          // identity stable when unrelated edits shift the code.
+          partialFingerprints: { 'codeguardFingerprint/v1': fingerprintFinding(f) },
           message: {
             text: f.description,
             markdown: f.llmAnalysis

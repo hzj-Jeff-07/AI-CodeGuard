@@ -1,8 +1,11 @@
 import { Command, Option } from 'commander';
 import { loadConfig } from '../../config/index.js';
 import { scan } from '../../scanner/index.js';
+import { assertWritableBaselinePath, writeBaseline } from '../../scanner/baseline.js';
 import type { Finding, OutputFormat, Severity } from '../../types/index.js';
 import { meetsSeverity } from '../../types/index.js';
+
+const DEFAULT_BASELINE_FILE = '.codeguard-baseline.json';
 
 // The build-failing threshold: any severity, or `none` to never fail the
 // build on findings (report-only). Exported for testing.
@@ -36,9 +39,34 @@ export function createScanCommand(): Command {
         .default('high'),
     )
     .option('--no-inline-suppression', 'Ignore inline codeguard-ignore comments (report everything, to audit what they hide)')
+    .option('--baseline <file>', 'Only report findings not covered by this baseline file')
+    .option('--write-baseline [file]', `Write current findings to a baseline file and exit 0 (default ${DEFAULT_BASELINE_FILE})`)
     .option('-v, --verbose', 'Verbose output', false)
     .action(async (paths: string[], opts) => {
       try {
+        if (opts.baseline && opts.writeBaseline) {
+          // Writing while filtering would snapshot only the leftovers and
+          // silently shrink the acknowledged set — force an explicit choice.
+          console.error('Use either --baseline (compare) or --write-baseline (snapshot), not both.');
+          process.exitCode = 2;
+          return;
+        }
+        if (opts.severity && opts.writeBaseline) {
+          // A severity-filtered snapshot acknowledges only part of the
+          // findings; later unfiltered --baseline runs would resurface the
+          // rest as "new". Baselines must come from unfiltered scans.
+          console.error('Write baselines from an unfiltered scan: drop --severity when using --write-baseline.');
+          process.exitCode = 2;
+          return;
+        }
+        if (typeof opts.writeBaseline === 'string') {
+          // Fail before any scanning cost if the target is a directory or an
+          // existing non-baseline file (commander's optional [file] argument
+          // greedily eats the next token, so `--write-baseline src` names the
+          // OUTPUT, not a scan path).
+          await assertWritableBaselinePath(opts.writeBaseline);
+        }
+
         const config = await loadConfig(opts.config);
 
         // CLI options override config
@@ -55,7 +83,21 @@ export function createScanCommand(): Command {
           minSeverity: opts.severity as Severity | undefined,
           // commander maps --no-inline-suppression to inlineSuppression: false
           inlineSuppression: opts.inlineSuppression as boolean,
+          baselinePath: opts.baseline as string | undefined,
         });
+
+        if (opts.writeBaseline) {
+          // Snapshotting acknowledges the current findings; the run itself is
+          // informational, so it never fails the build. Stage-2-dismissed
+          // findings are acknowledged too — otherwise every later --baseline
+          // run would re-pay LLM cost re-triaging them, and a flaky verdict
+          // flip would fail CI on old, unchanged code.
+          const baselineFile = typeof opts.writeBaseline === 'string' ? opts.writeBaseline : DEFAULT_BASELINE_FILE;
+          const acknowledged = [...result.findings, ...(result.dismissedFindings ?? [])];
+          await writeBaseline(acknowledged, baselineFile);
+          console.error(`Baseline written: ${baselineFile} (${acknowledged.length} findings acknowledged, ${result.dismissedFindings?.length ?? 0} of them Stage 2 dismissals)`);
+          return;
+        }
 
         // Exit non-zero when a reported finding meets the fail-on threshold
         // (default: high — preserving the prior "fail on high/critical" gate).
