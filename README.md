@@ -72,6 +72,9 @@ node dist/index.js scan ./src --fix
 node dist/index.js scan ./src --output json
 node dist/index.js scan ./src --output sarif --output-file report.sarif
 
+# Output a GitHub PR review payload (inline comments) — see docs/examples/pr-review.yml
+node dist/index.js scan ./src --output github --output-file review.json
+
 # Control the CI exit code: fail only on critical findings (default is `high`;
 # `--fail-on none` always exits 0, for report-only scans)
 node dist/index.js scan ./src --fail-on critical
@@ -88,6 +91,10 @@ node dist/index.js rules validate ./custom-rules
 # Run Stage 1-only custom rule smoke test
 node dist/index.js rules test ./custom-rules ./src --output json
 ```
+
+### PR review bot (BYO-key)
+
+`--output github` produces a [GitHub PR review payload](https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request) — a summary plus one inline comment per finding (rule, CWE link, Stage 2 reasoning, suggested fix, and a copy-paste suppression hint). It carries no credentials; a thin workflow step submits it with the repo's built-in `GITHUB_TOKEN`, and you bring your own LLM key as a secret (nothing goes to a hosted service). See [`docs/examples/pr-review.yml`](docs/examples/pr-review.yml) — it scans only the PR's changed files so comments land inside the diff, and falls back to a Stage-1-only advisory pass when no key is set.
 
 ### Measuring precision
 

@@ -1,0 +1,57 @@
+# Example: post AI-CodeGuard findings as an inline PR review.
+#
+# BYO-key model — you supply your own LLM key as a repo secret; nothing is sent
+# to a hosted service. The CLI produces a GitHub review payload (`-o github`)
+# and a thin step submits it via the REST API with the built-in GITHUB_TOKEN.
+#
+# Copy this into .github/workflows/ and adjust the build step to your project.
+
+name: AI-CodeGuard PR review
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write # required to submit the review
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the base ref to scope to changed files
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Build AI-CodeGuard (or `npm i -g ai-codeguard` once published).
+      - run: npm ci && npm run build
+
+      # Scan only the files changed in this PR, so review comments land on the
+      # diff (GitHub rejects comments outside the diff). Stage 2 runs when the
+      # key secret is present; otherwise it's a Stage-1-only advisory pass.
+      - name: Scan changed files
+        env:
+          CODEGUARD_API_KEY: ${{ secrets.CODEGUARD_API_KEY }}
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          FILES=$(git diff --name-only --diff-filter=d "$BASE"...HEAD \
+            | grep -E '\.(js|jsx|mjs|cjs|ts|tsx|py|go|java|php)$' || true)
+          if [ -z "$FILES" ]; then
+            echo '{"event":"COMMENT","body":"AI-CodeGuard: no supported files changed.","comments":[]}' > review.json
+            exit 0
+          fi
+          DRY=""; [ -z "$CODEGUARD_API_KEY" ] && DRY="--dry-run"
+          node dist/index.js scan $FILES $DRY -o github -f review.json || true
+
+      # Submit the review. Uses only the auto-provisioned GITHUB_TOKEN.
+      - name: Post review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # No comments -> post just the summary as a review body.
+          gh api "repos/$REPO/pulls/$PR/reviews" --method POST --input review.json

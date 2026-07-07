@@ -22,7 +22,7 @@ export function createScanCommand(): Command {
     .argument('[paths...]', 'Files or directories to scan', ['.'])
     .addOption(
       new Option('-o, --output <format>', 'Output format')
-        .choices(['text', 'json', 'sarif'])
+        .choices(['text', 'json', 'sarif', 'github'])
         .default('text'),
     )
     .option('-f, --output-file <file>', 'Write report to file')
