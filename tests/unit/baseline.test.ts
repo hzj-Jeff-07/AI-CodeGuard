@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
+  assertWritableBaselinePath,
   buildBaseline,
   filterAgainstBaseline,
   fingerprintFinding,
@@ -113,6 +114,63 @@ describe('writeBaseline / loadBaseline', () => {
       const path = resolve(dir, 'future.json');
       await writeFile(path, JSON.stringify({ version: 999, fingerprints: {} }));
       await expect(loadBaseline(path)).rejects.toThrow(/Unsupported baseline format/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects non-integer fingerprint counts', async () => {
+    const dir = await mkdtemp(resolve(tmpdir(), 'cg-baseline-'));
+    try {
+      const path = resolve(dir, 'bad-counts.json');
+      await writeFile(path, JSON.stringify({ version: 1, fingerprints: { abcd: 'two' } }));
+      await expect(loadBaseline(path)).rejects.toThrow(/Unsupported baseline format/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not misreport a directory read error as "not found"', async () => {
+    const dir = await mkdtemp(resolve(tmpdir(), 'cg-baseline-'));
+    try {
+      await expect(loadBaseline(dir)).rejects.toThrow(/Failed to read baseline file/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('assertWritableBaselinePath', () => {
+  it('allows a nonexistent path', async () => {
+    await expect(assertWritableBaselinePath('/tmp/definitely-missing-cg-baseline.json')).resolves.toBeUndefined();
+  });
+
+  it('allows overwriting an existing valid baseline', async () => {
+    const dir = await mkdtemp(resolve(tmpdir(), 'cg-baseline-'));
+    try {
+      const path = resolve(dir, 'baseline.json');
+      await writeBaseline([finding()], path);
+      await expect(assertWritableBaselinePath(path)).resolves.toBeUndefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a directory target (greedy [file] argument trap)', async () => {
+    const dir = await mkdtemp(resolve(tmpdir(), 'cg-baseline-'));
+    try {
+      await expect(assertWritableBaselinePath(dir)).rejects.toThrow(/is a directory/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses to overwrite an existing non-baseline file (source-file protection)', async () => {
+    const dir = await mkdtemp(resolve(tmpdir(), 'cg-baseline-'));
+    try {
+      const path = resolve(dir, 'app.ts');
+      await writeFile(path, 'export const x = 1;\n');
+      await expect(assertWritableBaselinePath(path)).rejects.toThrow(/Refusing to overwrite/);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

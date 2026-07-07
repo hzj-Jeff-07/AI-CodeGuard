@@ -1,7 +1,7 @@
 import { Command, Option } from 'commander';
 import { loadConfig } from '../../config/index.js';
 import { scan } from '../../scanner/index.js';
-import { writeBaseline } from '../../scanner/baseline.js';
+import { assertWritableBaselinePath, writeBaseline } from '../../scanner/baseline.js';
 import type { Finding, OutputFormat, Severity } from '../../types/index.js';
 import { meetsSeverity } from '../../types/index.js';
 
@@ -51,6 +51,21 @@ export function createScanCommand(): Command {
           process.exitCode = 2;
           return;
         }
+        if (opts.severity && opts.writeBaseline) {
+          // A severity-filtered snapshot acknowledges only part of the
+          // findings; later unfiltered --baseline runs would resurface the
+          // rest as "new". Baselines must come from unfiltered scans.
+          console.error('Write baselines from an unfiltered scan: drop --severity when using --write-baseline.');
+          process.exitCode = 2;
+          return;
+        }
+        if (typeof opts.writeBaseline === 'string') {
+          // Fail before any scanning cost if the target is a directory or an
+          // existing non-baseline file (commander's optional [file] argument
+          // greedily eats the next token, so `--write-baseline src` names the
+          // OUTPUT, not a scan path).
+          await assertWritableBaselinePath(opts.writeBaseline);
+        }
 
         const config = await loadConfig(opts.config);
 
@@ -73,10 +88,14 @@ export function createScanCommand(): Command {
 
         if (opts.writeBaseline) {
           // Snapshotting acknowledges the current findings; the run itself is
-          // informational, so it never fails the build.
+          // informational, so it never fails the build. Stage-2-dismissed
+          // findings are acknowledged too — otherwise every later --baseline
+          // run would re-pay LLM cost re-triaging them, and a flaky verdict
+          // flip would fail CI on old, unchanged code.
           const baselineFile = typeof opts.writeBaseline === 'string' ? opts.writeBaseline : DEFAULT_BASELINE_FILE;
-          await writeBaseline(result.findings, baselineFile);
-          console.error(`Baseline written: ${baselineFile} (${result.findings.length} findings acknowledged)`);
+          const acknowledged = [...result.findings, ...(result.dismissedFindings ?? [])];
+          await writeBaseline(acknowledged, baselineFile);
+          console.error(`Baseline written: ${baselineFile} (${acknowledged.length} findings acknowledged, ${result.dismissedFindings?.length ?? 0} of them Stage 2 dismissals)`);
           return;
         }
 
