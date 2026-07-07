@@ -9,16 +9,18 @@ AI-CodeGuard is currently in a **Phase 1** state, but the runtime pipeline is no
 What is implemented today:
 - CLI commands: `scan`, `init`, `rules` (`--list`, `validate`, `create`, `test`)
 - Local scanning for **JavaScript, TypeScript, Python, Go, Java, and PHP**
-- **13 built-in OWASP-oriented rules**
+- **19 built-in OWASP-oriented rules** (see the rule table below for per-language coverage)
 - Optional YAML custom rule loading through `rules.custom`
 - Custom rule CLI workflow through **`rules validate/create/test`**
-- Report output in **text, JSON, SARIF** (SARIF rules carry CWE tags, `security-severity`, and a MITRE `helpUri`, so GitHub Code Scanning shows CWE labels and ranks alerts)
+- Report output in **text, JSON, SARIF, and GitHub PR review** (`--output github`); SARIF rules carry CWE tags, `security-severity`, a MITRE `helpUri`, and stable `partialFingerprints`, so GitHub Code Scanning shows CWE labels, ranks alerts, and keeps alert identity across line shifts
 - Stage 2 LLM analysis via **Claude** or **OpenAI** when `scan` runs without `--dry-run`
 - Optional fix suggestions through `--fix`
+- **CI-friendly controls**: `--fail-on <level>` exit-code gate, machine-readable `severityCounts` in JSON, inline `codeguard-ignore` suppression (auditable), and baseline files (`--write-baseline` / `--baseline`) to adopt on an existing codebase and gate on new findings only
+- **Measurable quality**: a Stage 1 precision harness with a labeled corpus and a metric ratchet (`npm run precision`; measured baseline 95.0% precision / 90.5% recall), and a Stage 2 triage-accuracy harness (`npm run triage`, opt-in) that measures how well the LLM confirms real vulnerabilities and dismisses false positives
 - Config loading via `.codeguard.yml` / environment variables
 - Disk cache for Stage 2 LLM results (`cache.enabled`), wired into the scan pipeline
-- GitHub composite Action (`action.yml`) plus CI / SARIF-upload workflows
-- Automated validation with **402 passing tests across 11 test files** (`npm run test:run` on 2026-07-06), plus an opt-in real-provider E2E test (skipped without `CODEGUARD_E2E=1` + API key) and a CI smoke job exercising the composite Action against the fixtures
+- GitHub composite Action (`action.yml`), CI / SARIF-upload workflows, and a BYO-key PR-review workflow example (`docs/examples/pr-review.yml`; design in `docs/design/GITHUB_APP.md`)
+- Automated validation with **521 passing tests across 16 test files** (`npm run test:run`), plus two opt-in real-provider tests (an E2E acceptance test and the triage measurement, both skipped without `CODEGUARD_E2E=1` + API key) and a CI smoke job exercising the composite Action against the fixtures
 
 What is **not** complete yet:
 - npm registry publish (GitHub tags exist via the release workflow, but the package is not on npm yet)
@@ -35,6 +37,8 @@ What is **not** complete yet:
 | M4 Custom rules runtime | Done | `rules.custom` is wired into `scan()`, and `rules validate/create/test` are available |
 | M5 GitHub / CI integration | Done | composite `action.yml`, `ci.yml`, and `security-scan.yml` (SARIF upload to Code Scanning) exist and pass |
 | M6 More languages | Done | Go: 12 rules; Java: 15 rules (adds `CG-010`, `CG-041`, `CG-070` over the Go set); PHP: 17 rules (adds `CG-021`/`CG-022`/`CG-023`/`CG-024`/`CG-025`/`CG-026`/`CG-031`/`CG-040`/`CG-041`/`CG-050`/`CG-070` over the original MVP set) |
+| M7 Quality & adoption tooling | Done | Stage 1 precision harness + ratchet, Stage 2 triage-accuracy harness, baseline files, inline suppression, `--fail-on`, stable SARIF fingerprints |
+| M8 Commercialization step 1 | In progress | `--output github` PR-review reporter + BYO-key workflow example; hosted GitHub App designed (`docs/design/GITHUB_APP.md`), not yet built |
 
 ### Terminology
 
@@ -236,8 +240,8 @@ The current runtime pipeline is:
 4. Load built-in rules plus optional custom YAML rules
 5. Run rules to produce suspicious nodes
 6. Convert suspicious nodes into Stage 1 findings
-7. If `--dry-run` is **not** enabled, run Stage 2 LLM analysis on those candidates
-8. Render output as text / JSON / SARIF
+7. Apply inline `codeguard-ignore` suppression and any `--baseline`, then, if `--dry-run` is **not** enabled, run Stage 2 LLM analysis on the remaining candidates
+8. Render output as text / JSON / SARIF / GitHub PR review
 
 Important runtime behavior:
 - `--dry-run` means **Stage 1 only**, so `llmCalls = 0` and `estimatedCost = 0`
@@ -323,9 +327,12 @@ Structured machine-readable output containing:
 - optional `fix` and `llmAnalysis`
 
 ### SARIF
-SARIF v2.1.0 output suitable for downstream tooling, including optional SARIF fixes and LLM markdown context.
+SARIF v2.1.0 output suitable for downstream tooling, including optional SARIF fixes and LLM markdown context. Each rule descriptor carries CWE tags, `security-severity`, and a MITRE `helpUri`, and each result carries a stable `partialFingerprints` value so GitHub Code Scanning keeps alert identity across line shifts.
 
 SARIF output integrates with GitHub Code Scanning: the repository ships a composite Action (`action.yml`) and a `security-scan.yml` workflow that runs a Stage 1 scan and uploads the SARIF report via `github/codeql-action/upload-sarif`.
+
+### GitHub PR review
+`--output github` produces a GitHub PR review payload (summary + inline comments per finding) for a BYO-key PR bot — see the [PR review bot](#pr-review-bot-byo-key) section.
 
 ## Repository Structure
 
@@ -336,7 +343,7 @@ ai-codeguard/
 │   ├── cli/                 # Commander.js entry and commands
 │   ├── config/              # Config schema, defaults, loader
 │   ├── parser/              # Tree-sitter runtime, normalization, and adapters
-│   ├── reporter/            # text / json / sarif formatters
+│   ├── reporter/            # text / json / sarif / github formatters
 │   ├── rules/               # Built-in + custom rule loading and execution
 │   ├── scanner/             # File discovery and orchestration
 │   └── types/               # Shared TypeScript types
@@ -368,17 +375,19 @@ ai-codeguard/
 
 ## Verification
 
-Verified on 2026-07-04:
-
 ```bash
 npm run build
 npm run test:run
+npm run lint
 ```
 
-Result:
-- build passed
-- `10` test files passed
-- `335` tests passed (plus 1 opt-in E2E skipped without an API key)
+Result (2026-07-07):
+- build passed, lint clean
+- `16` test files passed
+- `521` tests passed (plus `2` opt-in real-provider tests skipped without `CODEGUARD_E2E=1` + an API key)
+- self-scan of `./src` and the safe fixtures reports 0 findings; the vulnerable fixtures report 98
+
+The scanner's own quality is measured, not just asserted: `npm run precision` reports Stage 1 precision/recall against a labeled corpus (baseline 95.0% / 90.5%, enforced by a ratchet test), and `npm run triage` (opt-in) measures Stage 2 confirm/dismiss accuracy.
 
 ## Limitations
 
