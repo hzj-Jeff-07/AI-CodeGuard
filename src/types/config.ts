@@ -1,5 +1,5 @@
 
-export type OutputFormat = 'sarif' | 'json' | 'text';
+export type OutputFormat = 'sarif' | 'json' | 'text' | 'github';
 export type LLMProvider = 'claude' | 'openai';
 
 export interface ScanConfig {

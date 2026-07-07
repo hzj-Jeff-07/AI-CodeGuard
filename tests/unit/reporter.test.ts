@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { formatJSON } from '../../src/reporter/json.js';
 import { formatSARIF } from '../../src/reporter/sarif.js';
 import { formatText } from '../../src/reporter/text.js';
+import { formatGitHubReview } from '../../src/reporter/github.js';
 import { VERSION } from '../../src/version.js';
 import type { ScanResult, Finding } from '../../src/types/index.js';
 
@@ -339,5 +340,65 @@ describe('formatText', () => {
     expect(output).toContain('Untrusted data flows into the SQL sink.');
     expect(output).toContain('LLM calls: 1');
     expect(output).toContain('Estimated cost: $0.12');
+  });
+});
+
+// ── formatGitHubReview ──────────────────────────────────────────
+
+describe('formatGitHubReview', () => {
+  it('produces a non-blocking review payload with one comment per finding', () => {
+    const payload = JSON.parse(formatGitHubReview(makeScanResult([makeFinding()])));
+    expect(payload.event).toBe('COMMENT');
+    expect(payload.comments).toHaveLength(1);
+    expect(payload.body).toContain('1 security finding');
+    expect(payload.body).toContain('1 critical');
+  });
+
+  it('anchors each comment to the finding file/line on the RIGHT side', () => {
+    const finding = makeFinding({ file: 'src/api.ts', location: { start: { line: 42, column: 0 }, end: { line: 42, column: 10 } } });
+    const comment = JSON.parse(formatGitHubReview(makeScanResult([finding]))).comments[0];
+    expect(comment.path).toBe('src/api.ts');
+    expect(comment.line).toBe(42);
+    expect(comment.side).toBe('RIGHT');
+  });
+
+  it('includes rule id, a CWE link, and a suppression hint in the comment body', () => {
+    const body = JSON.parse(formatGitHubReview(makeScanResult([makeFinding()]))).comments[0].body;
+    expect(body).toContain('CG-001');
+    expect(body).toContain('cwe.mitre.org/data/definitions/89.html');
+    expect(body).toContain('codeguard-ignore CG-001');
+  });
+
+  it('surfaces the Stage 2 reasoning and a suggested fix when present', () => {
+    const finding = makeFinding({
+      llmAnalysis: { confirmed: true, confidence: 0.9, reasoning: 'reachable from untrusted input' },
+      fix: { description: 'Use a parameterized query', code: 'db.query("... ?", [id])' },
+    });
+    const body = JSON.parse(formatGitHubReview(makeScanResult([finding]))).comments[0].body;
+    expect(body).toContain('90% confidence');
+    expect(body).toContain('reachable from untrusted input');
+    expect(body).toContain('Use a parameterized query');
+    expect(body).toContain('db.query("... ?", [id])');
+  });
+
+  it('reports a clean pass with no comments when there are no findings', () => {
+    const payload = JSON.parse(formatGitHubReview(makeScanResult()));
+    expect(payload.comments).toHaveLength(0);
+    expect(payload.body).toContain('no new security findings');
+  });
+
+  it('widens the code fence so fix code containing ``` cannot break markdown', () => {
+    const finding = makeFinding({
+      fix: { description: 'wrap in a fence', code: 'const md = "```js\\ncode\\n```";' },
+    });
+    const body = JSON.parse(formatGitHubReview(makeScanResult([finding]))).comments[0].body;
+    // The outer fence must be longer than the 3-backtick run inside the code,
+    // so the block opens and closes with the same wider fence.
+    expect(body).toContain('````');
+    expect(body).toContain('const md = "```js');
+    // The opening fence line is exactly the wider fence (no language tag added).
+    const fenceLines = body.split('\n').filter((l: string) => /^`{4,}$/.test(l));
+    expect(fenceLines.length).toBe(2);
+    expect(fenceLines[0]).toBe(fenceLines[1]);
   });
 });

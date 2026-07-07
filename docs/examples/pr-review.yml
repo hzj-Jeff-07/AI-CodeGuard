@@ -1,0 +1,75 @@
+# Example: post AI-CodeGuard findings as a PR review.
+#
+# BYO-key model — you supply your own LLM key as a repo secret; nothing is sent
+# to a hosted service. The CLI produces a GitHub review payload (`-o github`)
+# and a thin step submits it via the REST API with the built-in GITHUB_TOKEN.
+#
+# NOTE ON DIFF SCOPING: GitHub rejects a review submission (422) if ANY inline
+# comment falls outside the PR diff — and the rejection is all-or-nothing, so a
+# single pre-existing finding on an unchanged line of a changed file would drop
+# the whole review. This example scans only changed files and then degrades
+# gracefully: if the inline review is rejected, it falls back to posting the
+# summary as a plain PR comment so the run never goes silently red. A
+# production bot should filter findings to the PR's changed *lines* (diff hunks)
+# before commenting — see docs/design/GITHUB_APP.md §3.
+#
+# Copy this into .github/workflows/ and adjust the build step to your project.
+
+name: AI-CodeGuard PR review
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write # required to submit the review / comment
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Check out the PR head commit (not the default merge ref), so the
+          # line numbers the scanner reports match the SHA the review anchors to.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0 # need the base ref to diff against
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Build AI-CodeGuard (or `npm i -g ai-codeguard` once published).
+      - run: npm ci && npm run build
+
+      # Always start from an empty payload so a later crash can't submit a
+      # stale review.json from a previous run.
+      - name: Seed empty review payload
+        run: |
+          echo '{"event":"COMMENT","body":"AI-CodeGuard: no supported files changed.","comments":[]}' > review.json
+
+      # Scan only the files changed in this PR. `--fail-on none` keeps the scan
+      # step green (the review IS the signal, not the exit code); a real crash
+      # still fails the step loudly because it is not masked.
+      - name: Scan changed files
+        env:
+          CODEGUARD_API_KEY: ${{ secrets.CODEGUARD_API_KEY }}
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          FILES=$(git diff --name-only --diff-filter=d "$BASE"...HEAD \
+            | grep -E '\.(js|jsx|mjs|cjs|ts|tsx|py|go|java|php)$' || true)
+          [ -z "$FILES" ] && exit 0
+          DRY=""; [ -z "$CODEGUARD_API_KEY" ] && DRY="--dry-run"
+          node dist/index.js scan $FILES $DRY -o github -f review.json --fail-on none
+
+      # Submit the review; on a 422 (an off-diff comment), fall back to posting
+      # the summary body as a normal PR comment so feedback still lands.
+      - name: Post review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if ! gh api "repos/$REPO/pulls/$PR/reviews" --method POST --input review.json; then
+            echo "Inline review rejected (likely an off-diff comment); posting summary only."
+            gh pr comment "$PR" --repo "$REPO" --body "$(jq -r '.body' review.json)"
+          fi

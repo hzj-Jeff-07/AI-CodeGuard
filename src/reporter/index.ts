@@ -3,6 +3,7 @@ import type { ScanResult, OutputFormat } from '../types/index.js';
 import { formatText } from './text.js';
 import { formatJSON } from './json.js';
 import { formatSARIF } from './sarif.js';
+import { formatGitHubReview } from './github.js';
 
 export async function generateReport(
   result: ScanResult,
@@ -21,6 +22,9 @@ export async function generateReport(
     case 'sarif':
       content = formatSARIF(result);
       break;
+    case 'github':
+      content = formatGitHubReview(result);
+      break;
   }
 
   if (outputFile) {
@@ -33,3 +37,4 @@ export async function generateReport(
 export { formatText } from './text.js';
 export { formatJSON } from './json.js';
 export { formatSARIF } from './sarif.js';
+export { formatGitHubReview } from './github.js';
