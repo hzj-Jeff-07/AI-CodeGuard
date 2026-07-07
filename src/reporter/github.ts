@@ -35,6 +35,16 @@ const SEVERITY_EMOJI: Record<Severity, string> = {
   low: '🔵',
 };
 
+// A fenced code block whose fence is longer than any backtick run inside the
+// code, so model-generated fix code that itself contains ``` can't close the
+// fence early and spill raw text into the comment (CommonMark rule: an opening
+// fence of N backticks is only closed by a run of >= N backticks).
+function fencedBlock(code: string): string {
+  const longestRun = Math.max(0, ...[...code.matchAll(/`+/g)].map(m => m[0].length));
+  const fence = '`'.repeat(Math.max(3, longestRun + 1));
+  return `${fence}\n${code}\n${fence}`;
+}
+
 function commentBody(finding: Finding): string {
   const cwe = cweLabel(finding.ruleId);
   const header = `${SEVERITY_EMOJI[finding.severity]} **${finding.title}** \`${finding.ruleId}\`${cwe ? ` · [${cwe}](https://cwe.mitre.org/data/definitions/${cwe.slice(4)}.html)` : ''}`;
@@ -44,7 +54,7 @@ function commentBody(finding: Finding): string {
     lines.push('', `> Stage 2 (${(finding.llmAnalysis.confidence * 100).toFixed(0)}% confidence): ${finding.llmAnalysis.reasoning}`);
   }
   if (finding.fix) {
-    lines.push('', '**Suggested fix:** ' + finding.fix.description, '', '```', finding.fix.code, '```');
+    lines.push('', '**Suggested fix:** ' + finding.fix.description, '', fencedBlock(finding.fix.code));
   }
   lines.push('', '<sub>Reported by AI-CodeGuard. Add `// codeguard-ignore ' + finding.ruleId + '` to suppress.</sub>');
   return lines.join('\n');

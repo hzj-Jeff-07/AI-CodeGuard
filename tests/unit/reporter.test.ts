@@ -386,4 +386,19 @@ describe('formatGitHubReview', () => {
     expect(payload.comments).toHaveLength(0);
     expect(payload.body).toContain('no new security findings');
   });
+
+  it('widens the code fence so fix code containing ``` cannot break markdown', () => {
+    const finding = makeFinding({
+      fix: { description: 'wrap in a fence', code: 'const md = "```js\\ncode\\n```";' },
+    });
+    const body = JSON.parse(formatGitHubReview(makeScanResult([finding]))).comments[0].body;
+    // The outer fence must be longer than the 3-backtick run inside the code,
+    // so the block opens and closes with the same wider fence.
+    expect(body).toContain('````');
+    expect(body).toContain('const md = "```js');
+    // The opening fence line is exactly the wider fence (no language tag added).
+    const fenceLines = body.split('\n').filter((l: string) => /^`{4,}$/.test(l));
+    expect(fenceLines.length).toBe(2);
+    expect(fenceLines[0]).toBe(fenceLines[1]);
+  });
 });
