@@ -102,6 +102,11 @@ describe('CG-001: SQL Injection', () => {
     const results = await scanCode('userDb.query("SELECT * FROM users WHERE id = " + id)');
     expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
   });
+
+  it('still flags acronym-camel db receivers (DBConn)', async () => {
+    const results = await scanCode('DBConn.query("SELECT * FROM users WHERE id = " + id)');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 // ── CG-001: SQL Injection (Go) ──────────────────────────────────

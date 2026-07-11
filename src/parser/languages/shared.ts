@@ -142,7 +142,7 @@ export function receiverNamesAny(object: string, names: readonly string[]): bool
   const segmentSet = new Set(segments.map(s => s.toLowerCase()));
   const words = new Set(
     segments
-      .flatMap(s => s.split(/[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])/))
+      .flatMap(s => s.split(/[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/))
       .filter(Boolean)
       .map(w => w.toLowerCase()),
   );
