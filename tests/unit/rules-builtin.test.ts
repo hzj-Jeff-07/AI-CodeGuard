@@ -74,6 +74,21 @@ describe('CG-001: SQL Injection', () => {
     const results = await scanCode('db.query("SELECT id, name" + " FROM users" + " WHERE active = 1")');
     expect(findByRule(results, 'CG-001').length).toBe(0);
   });
+
+  it('ignores SQL wildcard text inside a constant literal (LIKE %...%)', async () => {
+    const results = await scanCode("db.execute(\"SELECT * FROM users WHERE name LIKE '%admin%'\")", 'python');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+
+  it('ignores strftime %-codes inside a constant literal', async () => {
+    const results = await scanCode("db.execute(\"SELECT strftime('%Y-%m', created) FROM events\")", 'python');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+
+  it('detects Python dict-style %-formatting assembling SQL', async () => {
+    const results = await scanCode('db.execute("SELECT * FROM users WHERE id = %(id)s" % {"id": user_id})', 'python');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 // ── CG-001: SQL Injection (Go) ──────────────────────────────────
@@ -533,6 +548,21 @@ describe('CG-003: Code Injection', () => {
 
   it('still flags setTimeout with concatenated string code', async () => {
     const results = await scanCode('setTimeout("do" + action, 1000)');
+    expect(findByRule(results, 'CG-003').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not flag a callback whose body contains a quote and a plus', async () => {
+    const results = await scanCode('setTimeout(() => { el.style.width = p + "%"; }, 50)');
+    expect(findByRule(results, 'CG-003').length).toBe(0);
+  });
+
+  it('does not flag a paren-less arrow callback containing string concat', async () => {
+    const results = await scanCode("setTimeout(x => log('retry ' + x), ms)");
+    expect(findByRule(results, 'CG-003').length).toBe(0);
+  });
+
+  it('still flags window.setTimeout with string code (global alias)', async () => {
+    const results = await scanCode('window.setTimeout("handle_" + action + "()", 0)');
     expect(findByRule(results, 'CG-003').length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -1925,6 +1955,26 @@ describe('CG-060: SSRF', () => {
   it('still detects python requests.get with concatenated URL', async () => {
     const results = await scanCode('requests.get("https://cdn.example.com/" + request.args["avatar"])', 'python');
     expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not flag reading an incoming request header with a dynamic name', async () => {
+    const results = await scanCode('request.headers.get("X-" + name)');
+    expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+
+  it('does not flag reading a dynamic query-param name from the incoming request', async () => {
+    const results = await scanCode('request.args.get("filter_" + name)', 'python');
+    expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+
+  it('detects urllib urlretrieve fetching a user-controlled URL', async () => {
+    const results = await scanCode('urllib.request.urlretrieve(request.args.get("url"), "/tmp/f")', 'python');
+    expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not treat a bare identifier containing "input" as user input', async () => {
+    const results = await scanCode('fetch(validatedInput)');
+    expect(findByRule(results, 'CG-060').length).toBe(0);
   });
 });
 

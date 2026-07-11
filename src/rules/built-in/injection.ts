@@ -16,13 +16,23 @@ const SQL_METHODS_PHP = ['query', 'exec', 'prepare', 'real_query', 'multi_query'
 const SQL_OBJECTS_PHP = ['db', 'database', 'conn', 'connection', 'pdo', 'mysqli', 'link'];
 const SQL_KEYWORDS = /\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|UNION|WHERE|FROM|JOIN)\b/i;
 
+// Replaces every string literal with a single NUL placeholder (a byte that
+// can't appear in real source) so callers can reason about the text
+// *between* literals without being fooled by their contents — a `%` inside
+// `"... LIKE '%admin%'"` is SQL wildcard text, not a format operator, and
+// identifier characters inside a literal are not a spliced-in expression.
+// The placeholder keeps "a literal sits here" visible, so `\u0000 % x`
+// still reads as "format operator applied to a string literal".
+const STRING_LITERAL = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`[^`]*`/g;
+function stripStringLiterals(text: string): string {
+  return text.replace(STRING_LITERAL, '\u0000');
+}
+
 // A string_concat whose pieces are all literals ("SELECT ..." + " FROM ...")
 // is just a multi-line way of writing a constant — only concatenation that
-// splices in a non-literal expression is dynamic. Strip every quoted literal
-// and see whether any identifier-ish characters remain among the operators.
+// splices in a non-literal expression is dynamic.
 function concatHasDynamicPart(text: string): boolean {
-  const stripped = text.replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`[^`]*`/g, '');
-  return /[\w$]/.test(stripped);
+  return /[\w$]/.test(stripStringLiterals(text));
 }
 
 // JS/TS template literals parse as template_string even without an
@@ -75,20 +85,20 @@ export const sqlInjection: BuiltInRule = {
       };
     }
 
+    // Every branch below requires actually-dynamic SQL rather than a bare
+    // SQL-keyword sniff: a plain literal is a constant, including the
+    // idiomatic parameterized forms (`$pdo->prepare("... WHERE id = ?")`,
+    // `execute("... WHERE id = ?", (user_id,))`) whose parameters are bound
+    // separately — keyword-sniffing would flag the standard safe pattern on
+    // every single use.
+    const hasDynamicSql = node.children.some(c => isDynamicSqlFragment(c, ctx.language));
+
     if (ctx.language === 'php') {
       const isBareSqlFunction = call.object === null && SQL_FUNCTIONS_PHP.includes(call.name);
       const isSqlMethodCall = call.object !== null
         && SQL_METHODS_PHP.includes(call.name)
         && SQL_OBJECTS_PHP.some(o => call.object!.toLowerCase().includes(o));
       if (!isBareSqlFunction && !isSqlMethodCall) return null;
-
-      // Require actual concatenation/interpolation rather than a bare
-      // SQL-keyword sniff: PDO's idiomatic `$pdo->prepare("SELECT ... WHERE
-      // id = ?")` takes the SQL string as its only argument (parameters are
-      // bound separately via a later `execute([...])` call), so
-      // keyword-sniffing a plain literal would flag the standard safe
-      // pattern on every single use.
-      const hasDynamicSql = node.children.some(c => isDynamicSqlFragment(c, ctx.language));
       if (!hasDynamicSql) return null;
 
       return {
@@ -118,8 +128,6 @@ export const sqlInjection: BuiltInRule = {
       return null;
     }
 
-    const hasDynamicSql = node.children.some(c => isDynamicSqlFragment(c, ctx.language));
-
     if (ctx.language === 'go' || ctx.language === 'java') {
       // Only flag queries assembled dynamically — via concatenation,
       // fmt.Sprintf, or String.format. Placeholder-based queries
@@ -130,14 +138,14 @@ export const sqlInjection: BuiltInRule = {
       if (!hasDynamicSql && !usesFormatBuilder) return null;
       if (!SQL_KEYWORDS.test(call.fullExpression)) return null;
     } else {
-      // Only dynamically-assembled SQL is suspicious. A plain string
-      // literal — even one full of SQL keywords — is a constant, including
-      // the standard parameterized form `execute("... WHERE id = ?",
-      // (user_id,))` that DB-API code uses everywhere. Python's two
-      // string-formatting builders count as dynamic assembly when the
-      // formatted string looks like SQL.
+      // Python's two string-formatting builders also count as dynamic
+      // assembly when the formatted string looks like SQL — detected on the
+      // literal-stripped text (`.format(` / `%` directly after a literal
+      // placeholder), so wildcard text *inside* a constant (`LIKE
+      // '%admin%'`, strftime's `'%Y'`) can't fake a format operator, and
+      // both `% name` and the dict form `% {"id": x}` are caught.
       const usesPyFormatBuilder = ctx.language === 'python'
-        && /['"]\s*\.\s*format\s*\(|['"]\s*%\s*[\w(]/.test(call.fullExpression)
+        && /\u0000\s*(?:\.\s*format\s*\(|%)/.test(stripStringLiterals(call.fullExpression))
         && SQL_KEYWORDS.test(call.fullExpression);
       if (!hasDynamicSql && !usesPyFormatBuilder) return null;
 
@@ -364,12 +372,24 @@ const EVAL_FUNCTIONS = ['eval', 'Function', 'setTimeout', 'setInterval'];
 // `session.setTimeout(...)`) are socket-timeout APIs with no code argument.
 const TIMER_FUNCTIONS = new Set(['setTimeout', 'setInterval']);
 
+// Global-object aliases through which the eval-like timer is still the
+// timer: `window.setTimeout("code", ms)` evaluates its string exactly like
+// the bare call. Any other receiver (`server.setTimeout(ms)`,
+// `session.setTimeout(...)`) is a socket-timeout API with no code argument.
+const GLOBAL_RECEIVERS = new Set(['window', 'globalThis', 'self', 'global']);
+
 function timerFirstArgIsStringCode(fullExpression: string): boolean {
   const argsText = getArgumentsText(fullExpression);
   if (argsText === null) return false;
   const first = (splitTopLevelArgs(argsText)[0] ?? '').trim();
-  // String literal / template literal, or an expression concatenating one.
-  return /^['"`]/.test(first) || (/['"`]/.test(first) && first.includes('+'));
+  // The argument itself must be a string expression. A leading quote is
+  // definitive. Otherwise reject function-shaped arguments outright —
+  // callbacks routinely *contain* quotes and `+` in their bodies
+  // (`() => log('retry ' + n)`) without evaluating any string — and only
+  // then accept a concatenation involving a literal (`"do" + action`).
+  if (/^['"`]/.test(first)) return true;
+  if (/^(?:async\b|function\b|\()/.test(first) || first.includes('=>')) return false;
+  return first.includes('+') && /['"`]/.test(first);
 }
 
 export const codeInjection: BuiltInRule = {
@@ -394,7 +414,7 @@ export const codeInjection: BuiltInRule = {
     if (!EVAL_FUNCTIONS.includes(call.name) && !isPythonExec) return null;
 
     if (TIMER_FUNCTIONS.has(call.name)) {
-      if (call.object !== null) return null;
+      if (call.object !== null && !GLOBAL_RECEIVERS.has(call.object)) return null;
       if (!timerFirstArgIsStringCode(call.fullExpression)) return null;
     }
 

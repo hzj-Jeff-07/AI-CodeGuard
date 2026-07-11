@@ -23,7 +23,7 @@ clean repos while losing zero true vulnerabilities** on Juice Shop.
 |---|---|---|---|---|
 | fastify | 102 | 177 | 29 | **−84%** |
 | flask | 83 | 43 | 7 | **−84%** |
-| juice-shop | 404 | 177 | 128 | −28% |
+| juice-shop | 404 | 177 | 127 | −28% |
 
 ## False-positive classes found (and fixed)
 
@@ -82,7 +82,7 @@ flask's own escaping implementation (×3), and `eval`/`exec` of user config
 files in `cli.py`/`config.py` (×2) — the last two are real dynamic code
 execution that flask does by design.
 
-**juice-shop (128):** the flagship planted vulnerabilities are all still
+**juice-shop (127):** the flagship planted vulnerabilities are all still
 found — SQL injection in `routes/login.ts:34` and `routes/search.ts:23`,
 `$where` NoSQL injection (×7), path traversal in `routes/fileUpload.ts:34`,
 MD5 password hashing and `Math.random()` tokens in `lib/insecurity.ts`,
@@ -98,6 +98,27 @@ Stage 1 cannot distinguish from server-side fetches.
 - **Stage 1 alone is not the product.** Even after the fixes, a clean repo
   gets ~0.3 findings/file of "textually suspicious, contextually fine" —
   exactly the residue Stage 2 triage exists to clear.
+
+## Follow-ups identified by the pre-merge review (not yet done)
+
+The structured review of these fixes flagged sibling rules that still carry
+the *shapes* fixed here, as pre-existing (not introduced) issues:
+
+- **Receiver substring matching survives in CG-001/CG-002** — `SQL_OBJECTS`
+  matches `call.object.toLowerCase().includes('db')` (so a receiver named
+  `feedback` contains `db`), and CG-002's Python object list matches any
+  receiver containing `os` (`photos.run(...)`). The exact-segment approach
+  now used by CG-060 should be generalized to them.
+- **Literal-only concatenation / interpolation-free templates still count
+  as "dynamic" in CG-002/CG-003/CG-024/CG-030/CG-060** — only CG-001 uses
+  the new constant-vs-dynamic discrimination. The right home is probably the
+  parser (`isStringConcatNode` / `isTemplateNode`), where Python f-strings
+  and PHP encapsed strings already get exactly this treatment; JS template
+  literals and all-literal concat do not.
+- **An Express handler whose parameter is named `request` calling
+  `request.get('X-' + h)`** is still reported (receiver is exactly the
+  ambiguous client name with a verb method) — textually indistinguishable
+  from the npm `request` client; left for Stage 2.
 
 ## Reproducing
 
