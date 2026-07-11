@@ -134,7 +134,16 @@ export function concatHasDynamicPart(text: string): boolean {
 // substring test (`object.includes('db')`, `includes('os')`) got wrong
 // (docs/dev/REALWORLD.md). Call-suffixes, index accesses and `$` sigils are
 // stripped, so `get_db()` still names `db`.
-export function receiverNamesAny(object: string, names: readonly string[]): boolean {
+// `suffixNames` additionally match as word suffixes: all-lowercase compounds
+// like `mydb` / `testdb` / `appdb` can't be split by case or separators, but
+// the `*db` suffix is the naming convention for databases. Suffix matching
+// is opt-in per name because it is not safe in general — `photos` ends with
+// `os`, which must NOT make it an os module.
+export function receiverNamesAny(
+  object: string,
+  names: readonly string[],
+  suffixNames: readonly string[] = [],
+): boolean {
   const segments = object
     .split(/\.|->|::/)
     .map(s => s.replace(/\(.*$/, '').replace(/\[[^\]]*\]/g, '').replace(/^\$/, '').trim())
@@ -149,5 +158,8 @@ export function receiverNamesAny(object: string, names: readonly string[]): bool
   return names.some(name => {
     const lowered = name.toLowerCase();
     return segmentSet.has(lowered) || words.has(lowered);
+  }) || suffixNames.some(suffix => {
+    const lowered = suffix.toLowerCase();
+    return [...words].some(w => w.length > lowered.length && w.endsWith(lowered));
   });
 }

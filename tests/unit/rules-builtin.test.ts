@@ -107,6 +107,13 @@ describe('CG-001: SQL Injection', () => {
     const results = await scanCode('DBConn.query("SELECT * FROM users WHERE id = " + id)');
     expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
   });
+
+  it('still flags all-lowercase compound db receivers (mydb, testdb)', async () => {
+    const results = await scanCode('mydb.query("SELECT * FROM users WHERE id = " + id)');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+    const results2 = await scanCode('testdb.execute(f"SELECT * FROM users WHERE id = {uid}")', 'python');
+    expect(findByRule(results2, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 // ── CG-001: SQL Injection (Go) ──────────────────────────────────

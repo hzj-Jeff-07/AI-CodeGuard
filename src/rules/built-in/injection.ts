@@ -14,6 +14,9 @@ const SQL_OBJECTS_JAVA = ['stmt', 'statement', 'conn', 'connection', 'db', 'jdbc
 const SQL_FUNCTIONS_PHP = ['mysqli_query', 'mysqli_real_query', 'mysqli_multi_query', 'pg_query', 'sqlite_query'];
 const SQL_METHODS_PHP = ['query', 'exec', 'prepare', 'real_query', 'multi_query'];
 const SQL_OBJECTS_PHP = ['db', 'database', 'conn', 'connection', 'pdo', 'mysqli', 'link'];
+// All-lowercase compound receivers (mydb, testdb, appdb) can't be split by
+// case, but `*db` is the database naming convention — matched as a suffix.
+const SQL_SUFFIXES = ['db'];
 const SQL_KEYWORDS = /\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|UNION|WHERE|FROM|JOIN)\b/i;
 
 export const sqlInjection: BuiltInRule = {
@@ -68,7 +71,7 @@ export const sqlInjection: BuiltInRule = {
       const isBareSqlFunction = call.object === null && SQL_FUNCTIONS_PHP.includes(call.name);
       const isSqlMethodCall = call.object !== null
         && SQL_METHODS_PHP.includes(call.name)
-        && receiverNamesAny(call.object!, SQL_OBJECTS_PHP);
+        && receiverNamesAny(call.object!, SQL_OBJECTS_PHP, SQL_SUFFIXES);
       if (!isBareSqlFunction && !isSqlMethodCall) return null;
       if (!hasDynamicSql) return null;
 
@@ -97,7 +100,7 @@ export const sqlInjection: BuiltInRule = {
     const objects = ctx.language === 'go' ? SQL_OBJECTS_GO
       : ctx.language === 'java' ? SQL_OBJECTS_JAVA
       : SQL_OBJECTS;
-    if (call.object && !receiverNamesAny(call.object, objects)) {
+    if (call.object && !receiverNamesAny(call.object, objects, SQL_SUFFIXES)) {
       return null;
     }
 
