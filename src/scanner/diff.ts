@@ -21,43 +21,60 @@ export function parseUnifiedDiff(diffText: string): ChangedLines {
   const changed: ChangedLines = new Map();
   let currentFile: string | null = null;
   let sawFileHeader = false;
-  let inHunk = false;
   let newLine = 0;
+  // Hunk-body lines remaining on each side, from the @@ header's counts.
+  // Tracking these (instead of a boolean) is what disambiguates content
+  // from structure: a deleted SQL comment renders as `--- x` and an added
+  // `++ i` renders as `+++ i`, which prefix-sniffing alone would misread
+  // as file headers. Inside a hunk, every line is body by definition.
+  let oldRemaining = 0;
+  let newRemaining = 0;
 
   for (const line of diffText.split('\n')) {
+    if (oldRemaining > 0 || newRemaining > 0) {
+      if (line.startsWith('\\')) {
+        // "\ No newline at end of file" — a marker, not content.
+        continue;
+      }
+      if (line.startsWith('+')) {
+        if (currentFile !== null) {
+          let lines = changed.get(currentFile);
+          if (!lines) {
+            lines = new Set();
+            changed.set(currentFile, lines);
+          }
+          lines.add(newLine);
+        }
+        newLine += 1;
+        newRemaining -= 1;
+      } else if (line.startsWith('-')) {
+        // Deletions live on the old side only.
+        oldRemaining -= 1;
+      } else {
+        // Context line (leading space, or empty if trailing whitespace was
+        // stripped somewhere in transit) — present on both sides.
+        newLine += 1;
+        oldRemaining -= 1;
+        newRemaining -= 1;
+      }
+      continue;
+    }
+
     if (line.startsWith('+++ ')) {
       // "+++ b/src/app.ts" (git) or "+++ src/app.ts" (plain diff); a
       // trailing tab + timestamp is legal in POSIX diffs.
       const target = line.slice(4).split('\t')[0].trim();
       currentFile = target === '/dev/null' ? null : target.replace(/^b\//, '');
       sawFileHeader = true;
-      inHunk = false;
       continue;
     }
 
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    const hunk = /^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
     if (hunk) {
-      newLine = Number(hunk[1]);
-      inHunk = true;
+      oldRemaining = hunk[1] === undefined ? 1 : Number(hunk[1]);
+      newLine = Number(hunk[2]);
+      newRemaining = hunk[3] === undefined ? 1 : Number(hunk[3]);
       continue;
-    }
-    if (!inHunk || currentFile === null) continue;
-
-    if (line.startsWith('+')) {
-      let lines = changed.get(currentFile);
-      if (!lines) {
-        lines = new Set();
-        changed.set(currentFile, lines);
-      }
-      lines.add(newLine);
-      newLine += 1;
-    } else if (line.startsWith('-') || line.startsWith('\\')) {
-      // Deletions live on the old side; "\ No newline at end of file" is
-      // a marker, not content. Neither advances the new-side counter.
-    } else {
-      // Context line (leading space, or empty if trailing whitespace was
-      // stripped somewhere in transit).
-      newLine += 1;
     }
   }
 

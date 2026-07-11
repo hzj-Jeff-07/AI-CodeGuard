@@ -73,6 +73,24 @@ describe('parseUnifiedDiff', () => {
     expect([...(parseUnifiedDiff(diff).get('x.ts') ?? [])]).toEqual([2]);
   });
 
+  it('does not misread hunk content that looks like diff structure', () => {
+    // A deleted SQL comment renders as `--- x`; an added `++ i` renders as
+    // `+++ i`. Hunk-length counting must keep both classified as body.
+    const diff = [
+      '--- a/q.sql',
+      '+++ b/q.sql',
+      '@@ -1,2 +1,2 @@',
+      ' context',
+      '--- legacy comment',
+      '+++ count added',
+      '@@ -10,1 +10,1 @@',
+      '+real added line',
+    ].join('\n');
+    const changed = parseUnifiedDiff(diff);
+    expect([...(changed.get('q.sql') ?? [])].sort((a, b) => a - b)).toEqual([2, 10]);
+    expect(changed.size).toBe(1);
+  });
+
   it('rejects text that is not a unified diff (silent-green footgun)', () => {
     expect(() => parseUnifiedDiff('{"findings": []}')).toThrow(/Not a unified diff/);
   });
