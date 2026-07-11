@@ -65,10 +65,12 @@ scan()
 规则当前运行在 Tree-sitter 解析后生成的归一化节点上。核心节点类型有：
 
 - `function_call`
-- `template_string`
-- `string_concat`
+- `template_string` —— **只代表真正动态的字符串**：JS/TS 模板字面量必须含 `${}` 插值槽（无插值的反引号多行常量不算）、Python f-string 与 PHP 插值串本身要求插值才归为此类
+- `string_concat` —— **只代表拼入了非字面量表达式的拼接**：`"SELECT ..." + " FROM ..."` 这类纯字面量拼接是换行写常量，不产生此节点（Unicode 感知，CJK 标识符也算动态部分）。这一"常量 vs 动态"判别在解析器层做一次，所有内置规则与 custom rules 统一继承（见 `docs/dev/REALWORLD.md`）
 - `assignment`
 - `unknown`（program root）
+
+接收者（receiver）匹配的公共语义：规则用 `shared.ts` 的 `receiverNamesAny()` 做**词级**匹配——`userDb` / `db_pool` / `DB::` / `$pdo->` / `get_db()` 都"命名"了数据库对象，而 `feedback` / `dbg` / `photos` 不会因包含 `db`/`os` 子串而误中（CG-060 的 HTTP 模块匹配是同思路的精确路径段版本）。
 
 custom rules 当前也共享这一能力边界，因此它们：
 

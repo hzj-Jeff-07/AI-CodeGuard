@@ -89,6 +89,19 @@ describe('CG-001: SQL Injection', () => {
     const results = await scanCode('db.execute("SELECT * FROM users WHERE id = %(id)s" % {"id": user_id})', 'python');
     expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
   });
+
+  // Receiver matching is word-level, not substring (docs/dev/REALWORLD.md
+  // follow-up): 'feedback' does not name a db; 'userDb' does.
+
+  it('does not flag a receiver that merely contains a db-like substring', async () => {
+    const results = await scanCode('feedback.query(`INSERT INTO log VALUES (${entry})`)');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+
+  it('still flags camelCase db receivers (userDb)', async () => {
+    const results = await scanCode('userDb.query("SELECT * FROM users WHERE id = " + id)');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 // ── CG-001: SQL Injection (Go) ──────────────────────────────────
@@ -188,6 +201,20 @@ describe('CG-002: Command Injection', () => {
   it('ignores static commands', async () => {
     const results = await scanCode('child_process.exec("ls -la")');
     expect(findByRule(results, 'CG-002').length).toBe(0);
+  });
+});
+
+describe('CG-002: Command Injection (receiver matching)', () => {
+  it('does not flag Python receivers that merely contain "os" as a substring', async () => {
+    const results = await scanCode('photos.run(f"convert {name}.png")', 'python');
+    expect(findByRule(results, 'CG-002').length).toBe(0);
+  });
+
+  it('still flags os.system and subprocess.run with dynamic commands', async () => {
+    const results = await scanCode('os.system("convert " + name)', 'python');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+    const results2 = await scanCode('subprocess.run(f"convert {name}", shell=True)', 'python');
+    expect(findByRule(results2, 'CG-002').length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -520,6 +547,12 @@ describe('CG-003: Code Injection', () => {
 
   it('does not treat PHP exec() as code injection', async () => {
     const results = await scanCode('<?php exec($cmd);', 'php');
+    expect(findByRule(results, 'CG-003').length).toBe(0);
+  });
+
+  it('does not flag exec of concatenated pure literals (constant command)', async () => {
+    const results = await scanCode("exec('git ' + 'status')");
+    expect(findByRule(results, 'CG-002').length).toBe(0);
     expect(findByRule(results, 'CG-003').length).toBe(0);
   });
 

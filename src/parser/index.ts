@@ -6,6 +6,7 @@ import { goAdapter } from './languages/go.js';
 import { javaAdapter } from './languages/java.js';
 import { phpAdapter } from './languages/php.js';
 import { getTreeSitterRuntime } from './tree-sitter/runtime.js';
+import { concatHasDynamicPart } from './languages/shared.js';
 
 const ADAPTERS: Record<Language, LanguageAdapter> = {
   javascript: javascriptAdapter,
@@ -166,20 +167,32 @@ function isTemplateNode(node: TreeSitterNode, language: Language): boolean {
       && node.namedChildren.some(child => child.type !== 'string_content');
   }
 
-  return node.type === 'template_string' || node.type === 'template_literal';
+  // JS/TS template literals are only dynamic with an interpolation slot —
+  // a backtick string without `${}` is a constant (multi-line SQL written
+  // in backticks is idiomatic), the same discrimination Python f-strings
+  // and PHP encapsed strings get above.
+  return (node.type === 'template_string' || node.type === 'template_literal')
+    && node.text.includes('${');
 }
 
+// Concatenation only becomes `string_concat` when it splices in a
+// non-literal expression: "SELECT ..." + " FROM ..." is a constant written
+// across lines, not dynamic assembly. Filtering here — rather than in each
+// rule — gives every built-in and custom rule the same semantics.
 function isStringConcatNode(node: TreeSitterNode, language: Language): boolean {
   if (language === 'python') {
-    return node.type === 'binary_operator' && node.text.includes('+') && hasStringLikeDescendant(node, language);
+    return node.type === 'binary_operator' && node.text.includes('+')
+      && hasStringLikeDescendant(node, language) && concatHasDynamicPart(node.text);
   }
 
   // PHP's concatenation operator is `.`, not `+`.
   if (language === 'php') {
-    return node.type === 'binary_expression' && node.text.includes('.') && hasStringLikeDescendant(node, language);
+    return node.type === 'binary_expression' && node.text.includes('.')
+      && hasStringLikeDescendant(node, language) && concatHasDynamicPart(node.text);
   }
 
-  return node.type === 'binary_expression' && node.text.includes('+') && hasStringLikeDescendant(node, language);
+  return node.type === 'binary_expression' && node.text.includes('+')
+    && hasStringLikeDescendant(node, language) && concatHasDynamicPart(node.text);
 }
 
 function hasStringLikeDescendant(node: TreeSitterNode, language: Language): boolean {

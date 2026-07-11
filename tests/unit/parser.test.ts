@@ -221,6 +221,27 @@ describe('parse', () => {
     expect(calls[0].children.some(n => n.type === 'template_string')).toBe(true);
   });
 
+  it('does not treat an interpolation-free template literal as dynamic', async () => {
+    const tree = await parse('db.query(`SELECT id, name\n  FROM users\n  WHERE active = 1`)', 'typescript');
+    const call = tree.root.children.find(n => n.type === 'function_call');
+    expect(call).toBeDefined();
+    expect(call!.children.some(n => n.type === 'template_string')).toBe(false);
+  });
+
+  it('does not treat concatenation of pure literals as dynamic', async () => {
+    const tree = await parse('db.query("SELECT id" + " FROM users" + " WHERE active = 1")', 'javascript');
+    const call = tree.root.children.find(n => n.type === 'function_call');
+    expect(call).toBeDefined();
+    expect(call!.children.some(n => n.type === 'string_concat')).toBe(false);
+  });
+
+  it('does not treat PHP concatenation of pure literals as dynamic', async () => {
+    const tree = await parse('<?php mysqli_query($conn, "SELECT id" . " FROM users"); ?>', 'php');
+    const call = tree.root.children.find(n => n.type === 'function_call' && n.text.includes('mysqli_query'));
+    expect(call).toBeDefined();
+    expect(call!.children.some(n => n.type === 'string_concat')).toBe(false);
+  });
+
   it('detects string concatenation', async () => {
     const tree = await parse('const q = "SELECT " + userInput;', 'javascript');
     const concats = tree.root.children.filter(n => n.type === 'string_concat');

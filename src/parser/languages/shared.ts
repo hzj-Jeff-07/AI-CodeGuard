@@ -108,3 +108,46 @@ export const USER_INPUT_JS_PY = /\b(req\.|params\.|query\.|body\.|request\.|args
 export const USER_INPUT_GO = /\b(r\.URL\.Query|r\.FormValue|r\.PostFormValue|mux\.Vars|c\.Param|c\.Query|os\.Args)\b/;
 export const USER_INPUT_JAVA = /\b(getParameter|getHeader|getQueryString)\b/;
 export const USER_INPUT_PHP = /\$_(GET|POST|REQUEST|COOKIE)\b/;
+
+// Replaces every string literal with a single placeholder character (U+FFFF,
+// a noncharacter that can't appear in real source) so callers can reason
+// about the text *between* literals without being fooled by their contents —
+// identifier characters inside a literal are not a spliced-in expression,
+// and a `%` inside `"... LIKE '%admin%'"` is SQL wildcard text, not a
+// format operator. The placeholder keeps "a literal sits here" visible.
+const STRING_LITERAL = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`[^`]*`/g;
+export function stripStringLiterals(text: string): string {
+  return text.replace(STRING_LITERAL, '\uFFFF');
+}
+
+// A concatenation whose pieces are all literals ("SELECT ..." + " FROM ...")
+// is just a multi-line way of writing a constant — only concatenation that
+// splices in a non-literal expression is dynamic. Unicode-aware: identifiers
+// can be CJK (`... + 提示`), which `\w` alone would miss.
+export function concatHasDynamicPart(text: string): boolean {
+  return /[\p{L}\p{N}_$]/u.test(stripStringLiterals(text));
+}
+
+// True when the receiver path names one of `names` as a whole segment or a
+// word within one: `userDb`, `db_pool`, `DB::` and `$pdo->` all name their
+// database; `feedback`, `dbg` and `photos` do not — which the previous
+// substring test (`object.includes('db')`, `includes('os')`) got wrong
+// (docs/dev/REALWORLD.md). Call-suffixes, index accesses and `$` sigils are
+// stripped, so `get_db()` still names `db`.
+export function receiverNamesAny(object: string, names: readonly string[]): boolean {
+  const segments = object
+    .split(/\.|->|::/)
+    .map(s => s.replace(/\(.*$/, '').replace(/\[[^\]]*\]/g, '').replace(/^\$/, '').trim())
+    .filter(Boolean);
+  const segmentSet = new Set(segments.map(s => s.toLowerCase()));
+  const words = new Set(
+    segments
+      .flatMap(s => s.split(/[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])/))
+      .filter(Boolean)
+      .map(w => w.toLowerCase()),
+  );
+  return names.some(name => {
+    const lowered = name.toLowerCase();
+    return segmentSet.has(lowered) || words.has(lowered);
+  });
+}

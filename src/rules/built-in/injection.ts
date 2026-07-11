@@ -1,6 +1,6 @@
 import type { ASTNode, Language, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
-import { getArgumentsText, splitTopLevelArgs } from '../../parser/languages/shared.js';
+import { getArgumentsText, receiverNamesAny, splitTopLevelArgs, stripStringLiterals } from '../../parser/languages/shared.js';
 
 const SQL_METHODS = ['query', 'execute', 'raw', 'exec', 'prepare'];
 const SQL_METHODS_GO = ['Query', 'QueryRow', 'QueryContext', 'QueryRowContext', 'Exec', 'ExecContext', 'Prepare', 'PrepareContext'];
@@ -15,39 +15,6 @@ const SQL_FUNCTIONS_PHP = ['mysqli_query', 'mysqli_real_query', 'mysqli_multi_qu
 const SQL_METHODS_PHP = ['query', 'exec', 'prepare', 'real_query', 'multi_query'];
 const SQL_OBJECTS_PHP = ['db', 'database', 'conn', 'connection', 'pdo', 'mysqli', 'link'];
 const SQL_KEYWORDS = /\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|UNION|WHERE|FROM|JOIN)\b/i;
-
-// Replaces every string literal with a single placeholder character (U+FFFF,
-// a noncharacter that can't appear in real source) so callers can reason
-// about the text *between* literals without being fooled by their contents — a `%` inside
-// `"... LIKE '%admin%'"` is SQL wildcard text, not a format operator, and
-// identifier characters inside a literal are not a spliced-in expression.
-// The placeholder keeps "a literal sits here" visible, so `\uFFFF % x`
-// still reads as "format operator applied to a string literal".
-const STRING_LITERAL = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`[^`]*`/g;
-function stripStringLiterals(text: string): string {
-  return text.replace(STRING_LITERAL, '\uFFFF');
-}
-
-// A string_concat whose pieces are all literals ("SELECT ..." + " FROM ...")
-// is just a multi-line way of writing a constant — only concatenation that
-// splices in a non-literal expression is dynamic.
-function concatHasDynamicPart(text: string): boolean {
-  return /[\w$]/.test(stripStringLiterals(text));
-}
-
-// JS/TS template literals parse as template_string even without an
-// interpolation slot (`SELECT 1` is a constant); Python f-strings and PHP
-// encapsed strings only reach the parser's template_string type when they
-// actually interpolate, so they are dynamic by construction.
-function isDynamicSqlFragment(c: ASTNode, language: Language): boolean {
-  if (c.type === 'template_string') {
-    return language === 'javascript' || language === 'typescript'
-      ? c.text.includes('${')
-      : true;
-  }
-  if (c.type === 'string_concat') return concatHasDynamicPart(c.text);
-  return false;
-}
 
 export const sqlInjection: BuiltInRule = {
   id: 'CG-001',
@@ -90,14 +57,18 @@ export const sqlInjection: BuiltInRule = {
     // idiomatic parameterized forms (`$pdo->prepare("... WHERE id = ?")`,
     // `execute("... WHERE id = ?", (user_id,))`) whose parameters are bound
     // separately — keyword-sniffing would flag the standard safe pattern on
-    // every single use.
-    const hasDynamicSql = node.children.some(c => isDynamicSqlFragment(c, ctx.language));
+    // every single use. The parser only emits template_string/string_concat
+    // markers for genuinely dynamic strings (interpolation slots, non-literal
+    // concat operands), so the children check is the whole test.
+    const hasDynamicSql = node.children.some(
+      c => c.type === 'template_string' || c.type === 'string_concat',
+    );
 
     if (ctx.language === 'php') {
       const isBareSqlFunction = call.object === null && SQL_FUNCTIONS_PHP.includes(call.name);
       const isSqlMethodCall = call.object !== null
         && SQL_METHODS_PHP.includes(call.name)
-        && SQL_OBJECTS_PHP.some(o => call.object!.toLowerCase().includes(o));
+        && receiverNamesAny(call.object!, SQL_OBJECTS_PHP);
       if (!isBareSqlFunction && !isSqlMethodCall) return null;
       if (!hasDynamicSql) return null;
 
@@ -120,11 +91,13 @@ export const sqlInjection: BuiltInRule = {
       : SQL_METHODS;
     if (!methods.includes(call.name)) return null;
 
-    // Check if the call target looks like a DB object
+    // Check if the call target names a DB object — as a path segment or a
+    // word within one (userDb, db_pool), never as a bare substring
+    // ('feedback' is not a db; see docs/dev/REALWORLD.md).
     const objects = ctx.language === 'go' ? SQL_OBJECTS_GO
       : ctx.language === 'java' ? SQL_OBJECTS_JAVA
       : SQL_OBJECTS;
-    if (call.object && !objects.some(o => call.object!.toLowerCase().includes(o))) {
+    if (call.object && !receiverNamesAny(call.object, objects)) {
       return null;
     }
 
@@ -196,15 +169,15 @@ export const commandInjection: BuiltInRule = {
 
     const isJSCmd = ctx.language !== 'java' &&
       CMD_FUNCTIONS.includes(call.name) &&
-      (!call.object || CMD_OBJECTS_JS.some(o => call.object!.includes(o)));
+      (!call.object || receiverNamesAny(call.object, CMD_OBJECTS_JS));
     const isPyCmd = ctx.language === 'python' &&
       CMD_FUNCTIONS_PY.includes(call.name) &&
-      (!call.object || CMD_OBJECTS_PY.some(o => call.object!.includes(o)));
+      (!call.object || receiverNamesAny(call.object, CMD_OBJECTS_PY));
     const isGoCmd = ctx.language === 'go' &&
       CMD_FUNCTIONS_GO.includes(call.name) &&
-      call.object !== null && call.object.includes('exec');
+      call.object !== null && receiverNamesAny(call.object, ['exec']);
     const isJavaCmd = ctx.language === 'java' && (
-      (call.name === 'exec' && call.object !== null && call.object.includes('Runtime')) ||
+      (call.name === 'exec' && call.object !== null && receiverNamesAny(call.object, ['runtime'])) ||
       call.name === 'ProcessBuilder'
     );
     const isPhpCmd = ctx.language === 'php' &&

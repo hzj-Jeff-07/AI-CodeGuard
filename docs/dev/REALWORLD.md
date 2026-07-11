@@ -99,22 +99,24 @@ Stage 1 cannot distinguish from server-side fetches.
   gets ~0.3 findings/file of "textually suspicious, contextually fine" —
   exactly the residue Stage 2 triage exists to clear.
 
-## Follow-ups identified by the pre-merge review (not yet done)
+## Follow-ups identified by the pre-merge review
 
-The structured review of these fixes flagged sibling rules that still carry
-the *shapes* fixed here, as pre-existing (not introduced) issues:
+Both structural follow-ups are now done:
 
-- **Receiver substring matching survives in CG-001/CG-002** — `SQL_OBJECTS`
-  matches `call.object.toLowerCase().includes('db')` (so a receiver named
-  `feedback` contains `db`), and CG-002's Python object list matches any
-  receiver containing `os` (`photos.run(...)`). The exact-segment approach
-  now used by CG-060 should be generalized to them.
-- **Literal-only concatenation / interpolation-free templates still count
-  as "dynamic" in CG-002/CG-003/CG-024/CG-030/CG-060** — only CG-001 uses
-  the new constant-vs-dynamic discrimination. The right home is probably the
-  parser (`isStringConcatNode` / `isTemplateNode`), where Python f-strings
-  and PHP encapsed strings already get exactly this treatment; JS template
-  literals and all-literal concat do not.
+- **Receiver substring matching in CG-001/CG-002** (a receiver named
+  `feedback` "contained" `db`; `photos.run(...)` "contained" `os`) is
+  replaced by word-level matching (`receiverNamesAny` in `shared.ts`):
+  `userDb`, `db_pool`, `DB::`, `$pdo->` and `get_db()` all name their
+  object; `feedback`, `dbg` and `photos` do not.
+- **Constant-vs-dynamic discrimination moved into the parser**
+  (`isTemplateNode` requires a `${}` slot for JS/TS; `isStringConcatNode`
+  requires a non-literal operand, Unicode-aware for CJK identifiers), so
+  every rule — CG-002/CG-003/CG-024/CG-030/CG-060 and custom rules matching
+  `string_concat` — inherits it instead of only CG-001. Python f-strings and
+  PHP encapsed strings already had this treatment at the same layer.
+
+Still open by design:
+
 - **An Express handler whose parameter is named `request` calling
   `request.get('X-' + h)`** is still reported (receiver is exactly the
   ambiguous client name with a verb method) — textually indistinguishable
