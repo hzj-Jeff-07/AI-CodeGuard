@@ -16,16 +16,16 @@ const SQL_METHODS_PHP = ['query', 'exec', 'prepare', 'real_query', 'multi_query'
 const SQL_OBJECTS_PHP = ['db', 'database', 'conn', 'connection', 'pdo', 'mysqli', 'link'];
 const SQL_KEYWORDS = /\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|UNION|WHERE|FROM|JOIN)\b/i;
 
-// Replaces every string literal with a single NUL placeholder (a byte that
-// can't appear in real source) so callers can reason about the text
-// *between* literals without being fooled by their contents — a `%` inside
+// Replaces every string literal with a single placeholder character (U+FFFF,
+// a noncharacter that can't appear in real source) so callers can reason
+// about the text *between* literals without being fooled by their contents — a `%` inside
 // `"... LIKE '%admin%'"` is SQL wildcard text, not a format operator, and
 // identifier characters inside a literal are not a spliced-in expression.
-// The placeholder keeps "a literal sits here" visible, so `\u0000 % x`
+// The placeholder keeps "a literal sits here" visible, so `\uFFFF % x`
 // still reads as "format operator applied to a string literal".
 const STRING_LITERAL = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`[^`]*`/g;
 function stripStringLiterals(text: string): string {
-  return text.replace(STRING_LITERAL, '\u0000');
+  return text.replace(STRING_LITERAL, '\uFFFF');
 }
 
 // A string_concat whose pieces are all literals ("SELECT ..." + " FROM ...")
@@ -145,7 +145,7 @@ export const sqlInjection: BuiltInRule = {
       // '%admin%'`, strftime's `'%Y'`) can't fake a format operator, and
       // both `% name` and the dict form `% {"id": x}` are caught.
       const usesPyFormatBuilder = ctx.language === 'python'
-        && /\u0000\s*(?:\.\s*format\s*\(|%)/.test(stripStringLiterals(call.fullExpression))
+        && /\uFFFF\s*(?:\.\s*format\s*\(|%)/.test(stripStringLiterals(call.fullExpression))
         && SQL_KEYWORDS.test(call.fullExpression);
       if (!hasDynamicSql && !usesPyFormatBuilder) return null;
 
