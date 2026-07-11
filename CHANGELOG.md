@@ -4,6 +4,10 @@ All notable changes to AI-CodeGuard are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **Two latent type errors invisible to the build** — tsup compiles with esbuild (no type checking), so `tsc --noEmit` had drifted red without anyone noticing: the Stage 2 worker passed a possibly-undefined `apiKey` into the provider request (guarded at runtime, but the narrowing never reached the closure), and a custom-rule `on:` matcher dereferenced a possibly-null receiver inside a callback for the same reason. Both now capture a narrowed local. A `typecheck` script (`tsc --noEmit`) is added and wired into CI so type drift fails the build from now on.
+
 ### Changed
 
 - **Constant-vs-dynamic string discrimination moved into the parser** — the review of the real-world FP fixes flagged that only CG-001 learned "literal-only concatenation and interpolation-free template literals are constants" while CG-002/CG-003/CG-024/CG-030/CG-060 kept the old semantics. The discrimination now lives where Python f-strings and PHP encapsed strings already had it: `isTemplateNode` requires a `${}` slot for JS/TS, and `isStringConcatNode` requires a non-literal operand (Unicode-aware — a CJK identifier like `提示` is a dynamic part). Every built-in rule and every custom rule matching `string_concat`/`template_string` inherits the fix; `exec('git ' + 'status')` and ``fetch(`https://internal/health`)`` are no longer "dynamic". CG-001's private helper is deleted in favor of the parser guarantee.

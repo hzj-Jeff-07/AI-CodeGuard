@@ -25,7 +25,8 @@
     "prepublishOnly": "npm run build && npm run test:run",
     "scan:self": "node dist/index.js scan ./src",
     "precision": "vitest run tests/precision",
-    "triage": "vitest run tests/triage"
+    "triage": "vitest run tests/triage",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "security",
