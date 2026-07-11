@@ -16,6 +16,29 @@ const SQL_METHODS_PHP = ['query', 'exec', 'prepare', 'real_query', 'multi_query'
 const SQL_OBJECTS_PHP = ['db', 'database', 'conn', 'connection', 'pdo', 'mysqli', 'link'];
 const SQL_KEYWORDS = /\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|UNION|WHERE|FROM|JOIN)\b/i;
 
+// A string_concat whose pieces are all literals ("SELECT ..." + " FROM ...")
+// is just a multi-line way of writing a constant — only concatenation that
+// splices in a non-literal expression is dynamic. Strip every quoted literal
+// and see whether any identifier-ish characters remain among the operators.
+function concatHasDynamicPart(text: string): boolean {
+  const stripped = text.replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`[^`]*`/g, '');
+  return /[\w$]/.test(stripped);
+}
+
+// JS/TS template literals parse as template_string even without an
+// interpolation slot (`SELECT 1` is a constant); Python f-strings and PHP
+// encapsed strings only reach the parser's template_string type when they
+// actually interpolate, so they are dynamic by construction.
+function isDynamicSqlFragment(c: ASTNode, language: Language): boolean {
+  if (c.type === 'template_string') {
+    return language === 'javascript' || language === 'typescript'
+      ? c.text.includes('${')
+      : true;
+  }
+  if (c.type === 'string_concat') return concatHasDynamicPart(c.text);
+  return false;
+}
+
 export const sqlInjection: BuiltInRule = {
   id: 'CG-001',
   name: 'SQL Injection',
@@ -59,16 +82,14 @@ export const sqlInjection: BuiltInRule = {
         && SQL_OBJECTS_PHP.some(o => call.object!.toLowerCase().includes(o));
       if (!isBareSqlFunction && !isSqlMethodCall) return null;
 
-      // Unlike the other languages, require actual concatenation/interpolation
-      // here rather than falling back to a bare SQL-keyword sniff: PDO's
-      // idiomatic `$pdo->prepare("SELECT ... WHERE id = ?")` takes the SQL
-      // string as its only argument (parameters are bound separately via a
-      // later `execute([...])` call), so keyword-sniffing a plain literal
-      // would flag the standard safe pattern on every single use.
-      const hasConcatOrTemplate = node.children.some(
-        c => c.type === 'template_string' || c.type === 'string_concat'
-      );
-      if (!hasConcatOrTemplate) return null;
+      // Require actual concatenation/interpolation rather than a bare
+      // SQL-keyword sniff: PDO's idiomatic `$pdo->prepare("SELECT ... WHERE
+      // id = ?")` takes the SQL string as its only argument (parameters are
+      // bound separately via a later `execute([...])` call), so
+      // keyword-sniffing a plain literal would flag the standard safe
+      // pattern on every single use.
+      const hasDynamicSql = node.children.some(c => isDynamicSqlFragment(c, ctx.language));
+      if (!hasDynamicSql) return null;
 
       return {
         file: ctx.file,
@@ -97,9 +118,7 @@ export const sqlInjection: BuiltInRule = {
       return null;
     }
 
-    const hasConcatOrTemplate = node.children.some(
-      c => c.type === 'template_string' || c.type === 'string_concat'
-    );
+    const hasDynamicSql = node.children.some(c => isDynamicSqlFragment(c, ctx.language));
 
     if (ctx.language === 'go' || ctx.language === 'java') {
       // Only flag queries assembled dynamically — via concatenation,
@@ -108,10 +127,19 @@ export const sqlInjection: BuiltInRule = {
       const usesFormatBuilder = ctx.language === 'go'
         ? /\bfmt\.Sprintf\s*\(/.test(call.fullExpression)
         : /\bString\.format\s*\(/.test(call.fullExpression);
-      if (!hasConcatOrTemplate && !usesFormatBuilder) return null;
+      if (!hasDynamicSql && !usesFormatBuilder) return null;
       if (!SQL_KEYWORDS.test(call.fullExpression)) return null;
     } else {
-      if (!hasConcatOrTemplate && !SQL_KEYWORDS.test(call.fullExpression)) return null;
+      // Only dynamically-assembled SQL is suspicious. A plain string
+      // literal — even one full of SQL keywords — is a constant, including
+      // the standard parameterized form `execute("... WHERE id = ?",
+      // (user_id,))` that DB-API code uses everywhere. Python's two
+      // string-formatting builders count as dynamic assembly when the
+      // formatted string looks like SQL.
+      const usesPyFormatBuilder = ctx.language === 'python'
+        && /['"]\s*\.\s*format\s*\(|['"]\s*%\s*[\w(]/.test(call.fullExpression)
+        && SQL_KEYWORDS.test(call.fullExpression);
+      if (!hasDynamicSql && !usesPyFormatBuilder) return null;
 
       // Exclude parameterized queries (second arg is array/object)
       if (/,\s*\[/.test(call.fullExpression)) return null;
@@ -329,6 +357,20 @@ export const nosqlInjection: BuiltInRule = {
 };
 
 const EVAL_FUNCTIONS = ['eval', 'Function', 'setTimeout', 'setInterval'];
+// The timer functions are only eval-like in their legacy string form:
+// `setTimeout("doThing()", 100)`. The overwhelmingly common function form
+// (`setTimeout(() => ..., ms)`, `setTimeout(resolve, ms)`) executes nothing
+// from a string, and receiver variants (`server.setTimeout(ms)`,
+// `session.setTimeout(...)`) are socket-timeout APIs with no code argument.
+const TIMER_FUNCTIONS = new Set(['setTimeout', 'setInterval']);
+
+function timerFirstArgIsStringCode(fullExpression: string): boolean {
+  const argsText = getArgumentsText(fullExpression);
+  if (argsText === null) return false;
+  const first = (splitTopLevelArgs(argsText)[0] ?? '').trim();
+  // String literal / template literal, or an expression concatenating one.
+  return /^['"`]/.test(first) || (/['"`]/.test(first) && first.includes('+'));
+}
 
 export const codeInjection: BuiltInRule = {
   id: 'CG-003',
@@ -350,6 +392,11 @@ export const codeInjection: BuiltInRule = {
     // (CG-002's job), not code injection.
     const isPythonExec = ctx.language === 'python' && call.name === 'exec' && call.object === null;
     if (!EVAL_FUNCTIONS.includes(call.name) && !isPythonExec) return null;
+
+    if (TIMER_FUNCTIONS.has(call.name)) {
+      if (call.object !== null) return null;
+      if (!timerFirstArgIsStringCode(call.fullExpression)) return null;
+    }
 
     const hasDynamic = node.children.some(
       c => c.type === 'template_string' || c.type === 'string_concat'

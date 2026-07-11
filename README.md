@@ -16,11 +16,11 @@ What is implemented today:
 - Stage 2 LLM analysis via **Claude** or **OpenAI** when `scan` runs without `--dry-run`
 - Optional fix suggestions through `--fix`
 - **CI-friendly controls**: `--fail-on <level>` exit-code gate, machine-readable `severityCounts` in JSON, inline `codeguard-ignore` suppression (auditable), and baseline files (`--write-baseline` / `--baseline`) to adopt on an existing codebase and gate on new findings only
-- **Measurable quality**: a Stage 1 precision harness with a labeled corpus and a metric ratchet (`npm run precision`; measured baseline 95.0% precision / 90.5% recall), and a Stage 2 triage-accuracy harness (`npm run triage`, opt-in) that measures how well the LLM confirms real vulnerabilities and dismisses false positives
+- **Measurable quality**: a Stage 1 precision harness with a labeled corpus and a metric ratchet (`npm run precision`; measured baseline 95.8% precision / 92.0% recall), a Stage 2 triage-accuracy harness (`npm run triage`, opt-in) that measures how well the LLM confirms real vulnerabilities and dismisses false positives, and a hand-assessed **real-world validation run** against fastify, flask, and OWASP Juice Shop (`docs/dev/REALWORLD.md`) whose false-positive classes are pinned as corpus regression tests
 - Config loading via `.codeguard.yml` / environment variables
 - Disk cache for Stage 2 LLM results (`cache.enabled`), wired into the scan pipeline
 - GitHub composite Action (`action.yml`), CI / SARIF-upload workflows, and a BYO-key PR-review workflow example (`docs/examples/pr-review.yml`; design in `docs/design/GITHUB_APP.md`)
-- Automated validation with **521 passing tests across 16 test files** (`npm run test:run`), plus two opt-in real-provider tests (an E2E acceptance test and the triage measurement, both skipped without `CODEGUARD_E2E=1` + API key) and a CI smoke job exercising the composite Action against the fixtures
+- Automated validation with **538 passing tests across 17 test files** (`npm run test:run`), plus two opt-in real-provider tests (an E2E acceptance test and the triage measurement, both skipped without `CODEGUARD_E2E=1` + API key) and a CI smoke job exercising the composite Action against the fixtures
 
 What is **not** complete yet:
 - npm registry publish (GitHub tags exist via the release workflow, but the package is not on npm yet)
@@ -102,7 +102,7 @@ node dist/index.js rules test ./custom-rules ./src --output json
 
 ### Measuring precision
 
-Unit tests assert single-pattern behavior; the **precision corpus** (`tests/corpus/`) measures the scanner on realistic mixed code. Vulnerable lines carry ground-truth `codeguard-expect CG-XXX` annotations (including cases the flat-node model is known to miss, kept honest as FNs), and tricky-but-safe code is asserted clean. `npm run precision` prints TP/FN/FP with precision/recall, and a ratchet test fails CI if either metric drops below the current baseline (precision ≥ 95%, recall ≥ 90%).
+Unit tests assert single-pattern behavior; the **precision corpus** (`tests/corpus/`) measures the scanner on realistic mixed code. Vulnerable lines carry ground-truth `codeguard-expect CG-XXX` annotations (including cases the flat-node model is known to miss, kept honest as FNs), and tricky-but-safe code is asserted clean — including the false-positive classes discovered by scanning fastify, flask, and OWASP Juice Shop (see `docs/dev/REALWORLD.md`). `npm run precision` prints TP/FN/FP with precision/recall, and a ratchet test fails CI if either metric drops below the current baseline (precision ≥ 95.8%, recall ≥ 92%).
 
 ### Adopting on an existing codebase (baseline)
 
@@ -381,13 +381,13 @@ npm run test:run
 npm run lint
 ```
 
-Result (2026-07-07):
+Result (2026-07-11):
 - build passed, lint clean
-- `16` test files passed
-- `521` tests passed (plus `2` opt-in real-provider tests skipped without `CODEGUARD_E2E=1` + an API key)
-- self-scan of `./src` and the safe fixtures reports 0 findings; the vulnerable fixtures report 98
+- `17` test files passed
+- `538` tests passed (plus `2` opt-in real-provider tests skipped without `CODEGUARD_E2E=1` + an API key)
+- self-scan of `./src` and the safe fixtures reports 0 findings; the vulnerable fixtures report 97
 
-The scanner's own quality is measured, not just asserted: `npm run precision` reports Stage 1 precision/recall against a labeled corpus (baseline 95.0% / 90.5%, enforced by a ratchet test), and `npm run triage` (opt-in) measures Stage 2 confirm/dismiss accuracy.
+The scanner's own quality is measured, not just asserted: `npm run precision` reports Stage 1 precision/recall against a labeled corpus (baseline 95.8% / 92.0%, enforced by a ratchet test), and `npm run triage` (opt-in) measures Stage 2 confirm/dismiss accuracy. Stage 1 has also been validated by hand against three real open-source repositories — fixing the false-positive classes that run exposed cut noise on the clean repos by 84% while keeping every planted Juice Shop vulnerability (`docs/dev/REALWORLD.md`).
 
 ## Limitations
 

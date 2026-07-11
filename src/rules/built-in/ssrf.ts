@@ -1,11 +1,35 @@
 import type { ASTNode, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
+import { getArgumentsText } from '../../parser/languages/shared.js';
 
 // Functions that make HTTP requests when called without a receiver object.
 // Bare verbs like `get`/`post` are intentionally excluded: they match Express
 // route registrations (`app.get`, `router.post`) and produce false positives.
 const STANDALONE_HTTP_FUNCTIONS = ['fetch', 'axios', 'request', 'urlopen', 'curl_init'];
-const HTTP_MODULES = ['axios', 'fetch', 'http', 'https', 'request', 'got', 'node-fetch', 'urllib', 'requests', 'httpx'];
+// Receiver names that identify an HTTP client. Matched as exact dot-path
+// segments (`axios.get` → `axios`, `this.http.get` → `http`), never as
+// substrings: fastify/Express hand every handler an *incoming* `request`
+// object, and a substring test made any `request.log.warn(...)` /
+// `flask.request.get_json()` call look like an outgoing HTTP request.
+// (`node-fetch` is absent because a hyphenated package name can't appear as
+// an identifier — its import is called `fetch` and matches that way.)
+const HTTP_MODULES = ['axios', 'fetch', 'http', 'https', 'request', 'got', 'urllib', 'requests', 'httpx'];
+// Methods that actually issue a request on an HTTP-client receiver. Gating on
+// the method as well as the receiver is what separates `axios.get(url)` from
+// `request.addfinalizer(...)` (pytest) or `request.server[k].log(...)`
+// (fastify) — the receiver name alone is not evidence of an outgoing call.
+const HTTP_VERB_METHODS = new Set([
+  'get', 'post', 'put', 'delete', 'patch', 'head', 'options', 'request', 'fetch',
+  'send', 'open', 'urlopen', 'stream',
+  // Go's net/http exports capitalized verbs.
+  'Get', 'Post', 'Head', 'PostForm', 'Do',
+]);
+
+function receiverIsHttpModule(object: string): boolean {
+  return object
+    .split('.')
+    .some(segment => HTTP_MODULES.includes(segment.replace(/\[.*$/, '').trim()));
+}
 // Java is gated on its own allowlists: constructors (`new URL(...)`, Apache
 // HttpClient request objects) plus RestTemplate/WebClient-style method names,
 // which are distinctive enough to match without a receiver check.
@@ -31,7 +55,7 @@ export const ssrf: BuiltInRule = {
         || HTTP_METHODS_JAVA.includes(call.name)
         || (call.object === 'URI' && call.name === 'create')
       : call.object
-        ? HTTP_MODULES.some(m => call.object!.includes(m))
+        ? receiverIsHttpModule(call.object) && HTTP_VERB_METHODS.has(call.name)
         : STANDALONE_HTTP_FUNCTIONS.includes(call.name);
     if (!isHttpCall) return null;
 
@@ -41,9 +65,11 @@ export const ssrf: BuiltInRule = {
     ) || (ctx.language === 'go' && /\bfmt\.Sprintf\s*\(/.test(call.fullExpression))
       || (ctx.language === 'java' && /\bString\.format\s*\(/.test(call.fullExpression));
 
-    // Or if the URL references user input
-    const text = call.fullExpression;
-    const hasUserInput = /\b(req\.|params\.|query\.|body\.|request\.|args\.|argv|input)/.test(text);
+    // Or if the URL references user input. Tested against the argument list
+    // only — testing the whole expression made the receiver match itself
+    // (`request.get(...)` contains `request.` by construction).
+    const argsText = getArgumentsText(call.fullExpression) ?? call.fullExpression;
+    const hasUserInput = /\b(req\.|params\.|query\.|body\.|request\.|args\.|argv|input)/.test(argsText);
 
     if (!hasDynamic && !hasUserInput) return null;
 
