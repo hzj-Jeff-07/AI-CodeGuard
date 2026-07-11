@@ -252,8 +252,10 @@ function matchesPattern(node: ASTNode, ctx: RuleCheckContext, pattern: Pattern):
         return false;
       }
 
+      // Local capture: the null-check narrowing doesn't reach the closure.
+      const object = call.object;
       const matchesObject = pattern.function.on.some(target =>
-        call.object === target || call.object.includes(target),
+        object === target || object.includes(target),
       );
 
       if (!matchesObject) {

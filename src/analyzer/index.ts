@@ -115,6 +115,9 @@ export async function analyzeFindings(
   if (!options.llm.apiKey) {
     throw new Error('LLM API key is required for Stage 2 analysis. Configure llm.apiKey or use --dry-run.');
   }
+  // Captured after the guard: narrowing on an object property doesn't reach
+  // the worker closures below, so they take the non-optional local instead.
+  const apiKey = options.llm.apiKey;
 
   const provider = dependencies.providers?.[options.llm.provider] ?? DEFAULT_PROVIDERS[options.llm.provider];
   const cache = dependencies.cache;
@@ -184,7 +187,7 @@ export async function analyzeFindings(
 
         const response = await provider({
           model: options.llm.model,
-          apiKey: options.llm.apiKey,
+          apiKey,
           systemPrompt,
           userPrompt,
         });
