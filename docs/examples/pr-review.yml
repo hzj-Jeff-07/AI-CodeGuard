@@ -7,11 +7,12 @@
 # NOTE ON DIFF SCOPING: GitHub rejects a review submission (422) if ANY inline
 # comment falls outside the PR diff — and the rejection is all-or-nothing, so a
 # single pre-existing finding on an unchanged line of a changed file would drop
-# the whole review. This example scans only changed files and then degrades
-# gracefully: if the inline review is rejected, it falls back to posting the
-# summary as a plain PR comment so the run never goes silently red. A
-# production bot should filter findings to the PR's changed *lines* (diff hunks)
-# before commenting — see docs/design/GITHUB_APP.md §3.
+# the whole review. This example therefore scans only changed files AND passes
+# the PR's diff via `--diff`, which drops findings on unchanged lines: the bot
+# only speaks about the change under review, never about years-old code that
+# happens to live in a touched file. If the inline review is still rejected,
+# it degrades gracefully to posting the summary as a plain PR comment so the
+# run never goes silently red. (Design rationale: docs/design/GITHUB_APP.md §3.)
 #
 # Copy this into .github/workflows/ and adjust the build step to your project.
 
@@ -55,11 +56,12 @@ jobs:
           CODEGUARD_API_KEY: ${{ secrets.CODEGUARD_API_KEY }}
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"
+          git diff "$BASE"...HEAD > pr.diff
           FILES=$(git diff --name-only --diff-filter=d "$BASE"...HEAD \
             | grep -E '\.(js|jsx|mjs|cjs|ts|tsx|py|go|java|php)$' || true)
           [ -z "$FILES" ] && exit 0
           DRY=""; [ -z "$CODEGUARD_API_KEY" ] && DRY="--dry-run"
-          node dist/index.js scan $FILES $DRY -o github -f review.json --fail-on none
+          node dist/index.js scan $FILES $DRY --diff pr.diff -o github -f review.json --fail-on none
 
       # Submit the review; on a 422 (an off-diff comment), fall back to posting
       # the summary body as a normal PR comment so feedback still lands.

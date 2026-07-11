@@ -101,10 +101,12 @@ describe('precision corpus', () => {
     if (falsePositives.length > 0) console.log(`spurious (FP): ${falsePositives.join(', ')}`);
 
     // ── RATCHET ── raise when the tool improves; never lower silently.
-    // Current measured baseline: precision 95.0% (19 TP / 1 FP — the planted
-    // str.find-as-Mongo trap), recall 90.5% (2 FN — the two documented
-    // dataflow-blind two-step cases).
-    expect(precision).toBeGreaterThanOrEqual(0.95);
-    expect(recall).toBeGreaterThanOrEqual(0.90);
+    // Current measured baseline: precision 95.8% (23 TP / 1 FP — the planted
+    // str.find-as-Mongo trap), recall 92.0% (2 FN — the two documented
+    // dataflow-blind two-step cases). The realworld.* corpus files pin the
+    // false-positive classes found by scanning fastify/flask/juice-shop
+    // (docs/dev/REALWORLD.md).
+    expect(precision).toBeGreaterThanOrEqual(0.958);
+    expect(recall).toBeGreaterThanOrEqual(0.92);
   });
 });

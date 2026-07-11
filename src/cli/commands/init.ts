@@ -15,6 +15,7 @@ scan:
     - "build"
     - "**/*.test.*"
     - "**/*.spec.*"
+    - "**/*.min.js"
 
 rules:
   preset: owasp-top-10

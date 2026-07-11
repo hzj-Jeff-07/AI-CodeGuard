@@ -3,7 +3,10 @@ import type { CodeGuardConfig } from '../types/index.js';
 export const DEFAULT_CONFIG: CodeGuardConfig = {
   scan: {
     include: ['**/*.{ts,js,py,go,java,php}'],
-    exclude: ['node_modules', '**/*.test.*', '**/*.spec.*', 'dist', 'build'],
+    // *.min.js: minified bundles are unreadable vendored artifacts — rule
+    // hits inside them are pure noise (nobody fixes a minified line), and a
+    // single such file can dominate a scan's findings.
+    exclude: ['node_modules', '**/*.test.*', '**/*.spec.*', '**/*.min.js', 'dist', 'build'],
   },
   rules: {
     preset: 'owasp-top-10',

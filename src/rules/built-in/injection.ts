@@ -1,6 +1,6 @@
 import type { ASTNode, Language, SuspiciousNode } from '../../types/index.js';
 import type { BuiltInRule, RuleCheckContext } from '../engine.js';
-import { getArgumentsText, splitTopLevelArgs } from '../../parser/languages/shared.js';
+import { getArgumentsText, receiverNamesAny, splitTopLevelArgs, stripStringLiterals } from '../../parser/languages/shared.js';
 
 const SQL_METHODS = ['query', 'execute', 'raw', 'exec', 'prepare'];
 const SQL_METHODS_GO = ['Query', 'QueryRow', 'QueryContext', 'QueryRowContext', 'Exec', 'ExecContext', 'Prepare', 'PrepareContext'];
@@ -14,6 +14,9 @@ const SQL_OBJECTS_JAVA = ['stmt', 'statement', 'conn', 'connection', 'db', 'jdbc
 const SQL_FUNCTIONS_PHP = ['mysqli_query', 'mysqli_real_query', 'mysqli_multi_query', 'pg_query', 'sqlite_query'];
 const SQL_METHODS_PHP = ['query', 'exec', 'prepare', 'real_query', 'multi_query'];
 const SQL_OBJECTS_PHP = ['db', 'database', 'conn', 'connection', 'pdo', 'mysqli', 'link'];
+// All-lowercase compound receivers (mydb, testdb, appdb) can't be split by
+// case, but `*db` is the database naming convention — matched as a suffix.
+const SQL_SUFFIXES = ['db'];
 const SQL_KEYWORDS = /\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|UNION|WHERE|FROM|JOIN)\b/i;
 
 export const sqlInjection: BuiltInRule = {
@@ -52,23 +55,25 @@ export const sqlInjection: BuiltInRule = {
       };
     }
 
+    // Every branch below requires actually-dynamic SQL rather than a bare
+    // SQL-keyword sniff: a plain literal is a constant, including the
+    // idiomatic parameterized forms (`$pdo->prepare("... WHERE id = ?")`,
+    // `execute("... WHERE id = ?", (user_id,))`) whose parameters are bound
+    // separately — keyword-sniffing would flag the standard safe pattern on
+    // every single use. The parser only emits template_string/string_concat
+    // markers for genuinely dynamic strings (interpolation slots, non-literal
+    // concat operands), so the children check is the whole test.
+    const hasDynamicSql = node.children.some(
+      c => c.type === 'template_string' || c.type === 'string_concat',
+    );
+
     if (ctx.language === 'php') {
       const isBareSqlFunction = call.object === null && SQL_FUNCTIONS_PHP.includes(call.name);
       const isSqlMethodCall = call.object !== null
         && SQL_METHODS_PHP.includes(call.name)
-        && SQL_OBJECTS_PHP.some(o => call.object!.toLowerCase().includes(o));
+        && receiverNamesAny(call.object!, SQL_OBJECTS_PHP, SQL_SUFFIXES);
       if (!isBareSqlFunction && !isSqlMethodCall) return null;
-
-      // Unlike the other languages, require actual concatenation/interpolation
-      // here rather than falling back to a bare SQL-keyword sniff: PDO's
-      // idiomatic `$pdo->prepare("SELECT ... WHERE id = ?")` takes the SQL
-      // string as its only argument (parameters are bound separately via a
-      // later `execute([...])` call), so keyword-sniffing a plain literal
-      // would flag the standard safe pattern on every single use.
-      const hasConcatOrTemplate = node.children.some(
-        c => c.type === 'template_string' || c.type === 'string_concat'
-      );
-      if (!hasConcatOrTemplate) return null;
+      if (!hasDynamicSql) return null;
 
       return {
         file: ctx.file,
@@ -89,17 +94,15 @@ export const sqlInjection: BuiltInRule = {
       : SQL_METHODS;
     if (!methods.includes(call.name)) return null;
 
-    // Check if the call target looks like a DB object
+    // Check if the call target names a DB object — as a path segment or a
+    // word within one (userDb, db_pool), never as a bare substring
+    // ('feedback' is not a db; see docs/dev/REALWORLD.md).
     const objects = ctx.language === 'go' ? SQL_OBJECTS_GO
       : ctx.language === 'java' ? SQL_OBJECTS_JAVA
       : SQL_OBJECTS;
-    if (call.object && !objects.some(o => call.object!.toLowerCase().includes(o))) {
+    if (call.object && !receiverNamesAny(call.object, objects, SQL_SUFFIXES)) {
       return null;
     }
-
-    const hasConcatOrTemplate = node.children.some(
-      c => c.type === 'template_string' || c.type === 'string_concat'
-    );
 
     if (ctx.language === 'go' || ctx.language === 'java') {
       // Only flag queries assembled dynamically — via concatenation,
@@ -108,10 +111,19 @@ export const sqlInjection: BuiltInRule = {
       const usesFormatBuilder = ctx.language === 'go'
         ? /\bfmt\.Sprintf\s*\(/.test(call.fullExpression)
         : /\bString\.format\s*\(/.test(call.fullExpression);
-      if (!hasConcatOrTemplate && !usesFormatBuilder) return null;
+      if (!hasDynamicSql && !usesFormatBuilder) return null;
       if (!SQL_KEYWORDS.test(call.fullExpression)) return null;
     } else {
-      if (!hasConcatOrTemplate && !SQL_KEYWORDS.test(call.fullExpression)) return null;
+      // Python's two string-formatting builders also count as dynamic
+      // assembly when the formatted string looks like SQL — detected on the
+      // literal-stripped text (`.format(` / `%` directly after a literal
+      // placeholder), so wildcard text *inside* a constant (`LIKE
+      // '%admin%'`, strftime's `'%Y'`) can't fake a format operator, and
+      // both `% name` and the dict form `% {"id": x}` are caught.
+      const usesPyFormatBuilder = ctx.language === 'python'
+        && /\uFFFF\s*(?:\.\s*format\s*\(|%)/.test(stripStringLiterals(call.fullExpression))
+        && SQL_KEYWORDS.test(call.fullExpression);
+      if (!hasDynamicSql && !usesPyFormatBuilder) return null;
 
       // Exclude parameterized queries (second arg is array/object)
       if (/,\s*\[/.test(call.fullExpression)) return null;
@@ -160,15 +172,15 @@ export const commandInjection: BuiltInRule = {
 
     const isJSCmd = ctx.language !== 'java' &&
       CMD_FUNCTIONS.includes(call.name) &&
-      (!call.object || CMD_OBJECTS_JS.some(o => call.object!.includes(o)));
+      (!call.object || receiverNamesAny(call.object, CMD_OBJECTS_JS));
     const isPyCmd = ctx.language === 'python' &&
       CMD_FUNCTIONS_PY.includes(call.name) &&
-      (!call.object || CMD_OBJECTS_PY.some(o => call.object!.includes(o)));
+      (!call.object || receiverNamesAny(call.object, CMD_OBJECTS_PY));
     const isGoCmd = ctx.language === 'go' &&
       CMD_FUNCTIONS_GO.includes(call.name) &&
-      call.object !== null && call.object.includes('exec');
+      call.object !== null && receiverNamesAny(call.object, ['exec']);
     const isJavaCmd = ctx.language === 'java' && (
-      (call.name === 'exec' && call.object !== null && call.object.includes('Runtime')) ||
+      (call.name === 'exec' && call.object !== null && receiverNamesAny(call.object, ['runtime'])) ||
       call.name === 'ProcessBuilder'
     );
     const isPhpCmd = ctx.language === 'php' &&
@@ -329,6 +341,32 @@ export const nosqlInjection: BuiltInRule = {
 };
 
 const EVAL_FUNCTIONS = ['eval', 'Function', 'setTimeout', 'setInterval'];
+// The timer functions are only eval-like in their legacy string form:
+// `setTimeout("doThing()", 100)`. The overwhelmingly common function form
+// (`setTimeout(() => ..., ms)`, `setTimeout(resolve, ms)`) executes nothing
+// from a string, and receiver variants (`server.setTimeout(ms)`,
+// `session.setTimeout(...)`) are socket-timeout APIs with no code argument.
+const TIMER_FUNCTIONS = new Set(['setTimeout', 'setInterval']);
+
+// Global-object aliases through which the eval-like timer is still the
+// timer: `window.setTimeout("code", ms)` evaluates its string exactly like
+// the bare call. Any other receiver (`server.setTimeout(ms)`,
+// `session.setTimeout(...)`) is a socket-timeout API with no code argument.
+const GLOBAL_RECEIVERS = new Set(['window', 'globalThis', 'self', 'global']);
+
+function timerFirstArgIsStringCode(fullExpression: string): boolean {
+  const argsText = getArgumentsText(fullExpression);
+  if (argsText === null) return false;
+  const first = (splitTopLevelArgs(argsText)[0] ?? '').trim();
+  // The argument itself must be a string expression. A leading quote is
+  // definitive. Otherwise reject function-shaped arguments outright —
+  // callbacks routinely *contain* quotes and `+` in their bodies
+  // (`() => log('retry ' + n)`) without evaluating any string — and only
+  // then accept a concatenation involving a literal (`"do" + action`).
+  if (/^['"`]/.test(first)) return true;
+  if (/^(?:async\b|function\b|\()/.test(first) || first.includes('=>')) return false;
+  return first.includes('+') && /['"`]/.test(first);
+}
 
 export const codeInjection: BuiltInRule = {
   id: 'CG-003',
@@ -350,6 +388,11 @@ export const codeInjection: BuiltInRule = {
     // (CG-002's job), not code injection.
     const isPythonExec = ctx.language === 'python' && call.name === 'exec' && call.object === null;
     if (!EVAL_FUNCTIONS.includes(call.name) && !isPythonExec) return null;
+
+    if (TIMER_FUNCTIONS.has(call.name)) {
+      if (call.object !== null && !GLOBAL_RECEIVERS.has(call.object)) return null;
+      if (!timerFirstArgIsStringCode(call.fullExpression)) return null;
+    }
 
     const hasDynamic = node.children.some(
       c => c.type === 'template_string' || c.type === 'string_concat'

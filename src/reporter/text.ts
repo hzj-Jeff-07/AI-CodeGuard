@@ -113,6 +113,9 @@ function formatSummary(result: ScanResult): string {
     result.baselined > 0
       ? chalk.dim(`  Absorbed by baseline: ${result.baselined} (re-run without --baseline to see all findings)`)
       : '',
+    result.diffFiltered > 0
+      ? chalk.dim(`  Outside the diff: ${result.diffFiltered} (re-run without --diff to see all findings)`)
+      : '',
     dismissedCount > 0
       ? chalk.dim(`  Dismissed by Stage 2: ${dismissedCount} (kept in JSON output under "dismissedFindings" — review if unexpected)`)
       : '',

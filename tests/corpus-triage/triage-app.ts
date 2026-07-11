@@ -29,9 +29,13 @@ export function pollWithJitter(pollSession: () => void) {
   // Math.random for timing jitter; "session" nearby is why Stage 1 fires,
   // but nothing security-sensitive is derived from the value.
   const sessionJitterMs = Math.random() * 250; // codeguard-fp CG-022
-  // setInterval with a function reference (not a code string) — the eval-family
-  // rule fires on the name alone; nothing is evaluated.
-  setInterval(pollSession, 5000 + sessionJitterMs); // codeguard-fp CG-003
+  // setInterval with a function reference is no longer a Stage 1 finding
+  // (the eval-family rule now requires a string-shaped code argument), so
+  // the CG-003 false-positive sample below uses the bundler-evasion idiom:
+  // eval of a trusted constant — flagged by name, but nothing user-controlled.
+  setInterval(pollSession, 5000 + sessionJitterMs);
+  const nodeRequire = eval('require'); // codeguard-fp CG-003
+  void nodeRequire;
 }
 
 export function notifyReset(userId: string) {

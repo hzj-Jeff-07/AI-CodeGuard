@@ -41,6 +41,79 @@ describe('CG-001: SQL Injection', () => {
     const results = await scanCode('console.log(`hello ${name}`)');
     expect(findByRule(results, 'CG-001').length).toBe(0);
   });
+
+  // A plain literal query is a constant, however many SQL keywords it holds
+  // (regressions from the real-world validation run on flask/juice-shop).
+
+  it('ignores a static string literal query', async () => {
+    const results = await scanCode("sequelize.query('SELECT sql FROM sqlite_master')");
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+
+  it('ignores a template literal without interpolation', async () => {
+    const results = await scanCode('db.query(`SELECT id, name\n  FROM users\n  WHERE active = 1`)');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+
+  it('ignores Python DB-API parameterized query with tuple params', async () => {
+    const results = await scanCode('db.execute("SELECT * FROM user WHERE id = ?", (user_id,))', 'python');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+
+  it('detects Python .format() assembling SQL', async () => {
+    const results = await scanCode('db.execute("SELECT * FROM users WHERE name = {}".format(name))', 'python');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('detects Python %-formatting assembling SQL', async () => {
+    const results = await scanCode('db.execute("SELECT * FROM users WHERE name = %s" % name)', 'python');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores concatenation of pure literals (multi-line constant SQL)', async () => {
+    const results = await scanCode('db.query("SELECT id, name" + " FROM users" + " WHERE active = 1")');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+
+  it('ignores SQL wildcard text inside a constant literal (LIKE %...%)', async () => {
+    const results = await scanCode("db.execute(\"SELECT * FROM users WHERE name LIKE '%admin%'\")", 'python');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+
+  it('ignores strftime %-codes inside a constant literal', async () => {
+    const results = await scanCode("db.execute(\"SELECT strftime('%Y-%m', created) FROM events\")", 'python');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+
+  it('detects Python dict-style %-formatting assembling SQL', async () => {
+    const results = await scanCode('db.execute("SELECT * FROM users WHERE id = %(id)s" % {"id": user_id})', 'python');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  // Receiver matching is word-level, not substring (docs/dev/REALWORLD.md
+  // follow-up): 'feedback' does not name a db; 'userDb' does.
+
+  it('does not flag a receiver that merely contains a db-like substring', async () => {
+    const results = await scanCode('feedback.query(`INSERT INTO log VALUES (${entry})`)');
+    expect(findByRule(results, 'CG-001').length).toBe(0);
+  });
+
+  it('still flags camelCase db receivers (userDb)', async () => {
+    const results = await scanCode('userDb.query("SELECT * FROM users WHERE id = " + id)');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('still flags acronym-camel db receivers (DBConn)', async () => {
+    const results = await scanCode('DBConn.query("SELECT * FROM users WHERE id = " + id)');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('still flags all-lowercase compound db receivers (mydb, testdb)', async () => {
+    const results = await scanCode('mydb.query("SELECT * FROM users WHERE id = " + id)');
+    expect(findByRule(results, 'CG-001').length).toBeGreaterThanOrEqual(1);
+    const results2 = await scanCode('testdb.execute(f"SELECT * FROM users WHERE id = {uid}")', 'python');
+    expect(findByRule(results2, 'CG-001').length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 // ── CG-001: SQL Injection (Go) ──────────────────────────────────
@@ -140,6 +213,20 @@ describe('CG-002: Command Injection', () => {
   it('ignores static commands', async () => {
     const results = await scanCode('child_process.exec("ls -la")');
     expect(findByRule(results, 'CG-002').length).toBe(0);
+  });
+});
+
+describe('CG-002: Command Injection (receiver matching)', () => {
+  it('does not flag Python receivers that merely contain "os" as a substring', async () => {
+    const results = await scanCode('photos.run(f"convert {name}.png")', 'python');
+    expect(findByRule(results, 'CG-002').length).toBe(0);
+  });
+
+  it('still flags os.system and subprocess.run with dynamic commands', async () => {
+    const results = await scanCode('os.system("convert " + name)', 'python');
+    expect(findByRule(results, 'CG-002').length).toBeGreaterThanOrEqual(1);
+    const results2 = await scanCode('subprocess.run(f"convert {name}", shell=True)', 'python');
+    expect(findByRule(results2, 'CG-002').length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -473,6 +560,55 @@ describe('CG-003: Code Injection', () => {
   it('does not treat PHP exec() as code injection', async () => {
     const results = await scanCode('<?php exec($cmd);', 'php');
     expect(findByRule(results, 'CG-003').length).toBe(0);
+  });
+
+  it('does not flag exec of concatenated pure literals (constant command)', async () => {
+    const results = await scanCode("exec('git ' + 'status')");
+    expect(findByRule(results, 'CG-002').length).toBe(0);
+    expect(findByRule(results, 'CG-003').length).toBe(0);
+  });
+
+  // Timer functions are only eval-like in their legacy string form
+  // (regressions from the real-world validation run on fastify/juice-shop).
+
+  it('does not flag setTimeout with a function reference', async () => {
+    const results = await scanCode('setTimeout(resolve, ms)');
+    expect(findByRule(results, 'CG-003').length).toBe(0);
+  });
+
+  it('does not flag setInterval with an arrow function', async () => {
+    const results = await scanCode('setInterval(() => { poll() }, 5000)');
+    expect(findByRule(results, 'CG-003').length).toBe(0);
+  });
+
+  it('does not flag receiver setTimeout (socket timeout API)', async () => {
+    const results = await scanCode('server.setTimeout(options.connectionTimeout)');
+    expect(findByRule(results, 'CG-003').length).toBe(0);
+  });
+
+  it('still flags setTimeout with a string code argument', async () => {
+    const results = await scanCode('setTimeout("refresh()", 1000)');
+    expect(findByRule(results, 'CG-003').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('still flags setTimeout with concatenated string code', async () => {
+    const results = await scanCode('setTimeout("do" + action, 1000)');
+    expect(findByRule(results, 'CG-003').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not flag a callback whose body contains a quote and a plus', async () => {
+    const results = await scanCode('setTimeout(() => { el.style.width = p + "%"; }, 50)');
+    expect(findByRule(results, 'CG-003').length).toBe(0);
+  });
+
+  it('does not flag a paren-less arrow callback containing string concat', async () => {
+    const results = await scanCode("setTimeout(x => log('retry ' + x), ms)");
+    expect(findByRule(results, 'CG-003').length).toBe(0);
+  });
+
+  it('still flags window.setTimeout with string code (global alias)', async () => {
+    const results = await scanCode('window.setTimeout("handle_" + action + "()", 0)');
+    expect(findByRule(results, 'CG-003').length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -1830,6 +1966,60 @@ describe('CG-060: SSRF', () => {
   it('still detects http module calls with user input', async () => {
     const results = await scanCode('http.get(req.query.url)');
     expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+
+  // Regression tests from the real-world validation run (fastify/flask):
+  // an *incoming* `request` object is not an HTTP client, and a receiver
+  // whose name merely contains a module name is not that module.
+
+  it('does not flag methods on an incoming request object (fastify request.log)', async () => {
+    const results = await scanCode("request.log.warn('the default handler did not catch this')");
+    expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+
+  it('does not flag non-verb methods on a request-named receiver', async () => {
+    const results = await scanCode('request.addfinalizer(resetPath)', 'python');
+    expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+
+  it('does not flag flask request.get_json()', async () => {
+    const results = await scanCode('flask.request.get_json()', 'python');
+    expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+
+  it('does not flag hook registration on a fetch-named property chain', async () => {
+    const results = await scanCode('resource.list.fetch.after((req, res, context) => { next() })', 'javascript');
+    expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+
+  it('still detects the npm request client issuing a dynamic request', async () => {
+    const results = await scanCode('request.get(`http://internal/${req.params.host}`)', 'javascript');
+    expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('still detects python requests.get with concatenated URL', async () => {
+    const results = await scanCode('requests.get("https://cdn.example.com/" + request.args["avatar"])', 'python');
+    expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not flag reading an incoming request header with a dynamic name', async () => {
+    const results = await scanCode('request.headers.get("X-" + name)');
+    expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+
+  it('does not flag reading a dynamic query-param name from the incoming request', async () => {
+    const results = await scanCode('request.args.get("filter_" + name)', 'python');
+    expect(findByRule(results, 'CG-060').length).toBe(0);
+  });
+
+  it('detects urllib urlretrieve fetching a user-controlled URL', async () => {
+    const results = await scanCode('urllib.request.urlretrieve(request.args.get("url"), "/tmp/f")', 'python');
+    expect(findByRule(results, 'CG-060').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not treat a bare identifier containing "input" as user input', async () => {
+    const results = await scanCode('fetch(validatedInput)');
+    expect(findByRule(results, 'CG-060').length).toBe(0);
   });
 });
 
