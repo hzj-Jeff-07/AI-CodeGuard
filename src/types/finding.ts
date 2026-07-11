@@ -45,6 +45,8 @@ export interface ScanResult {
   suppressed: number;
   /** Count of findings absorbed by the baseline file (only new findings are reported). */
   baselined: number;
+  /** Count of findings outside the `--diff` changed lines (PR-bot mode drops them). */
+  diffFiltered: number;
   findings: Finding[];
   /** Stage 1 findings dismissed by Stage 2 LLM analysis — kept so suppressions stay auditable */
   dismissedFindings?: Finding[];

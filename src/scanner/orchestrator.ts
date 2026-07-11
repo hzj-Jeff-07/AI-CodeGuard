@@ -10,6 +10,7 @@ import { analyzeFindings, type AnalyzeFindingsDependencies } from '../analyzer/i
 import { FileCacheStore } from '../cache/index.js';
 import { filterSuppressed } from './suppression.js';
 import { filterAgainstBaseline, loadBaseline } from './baseline.js';
+import { loadChangedLines, overlapsChangedLines } from './diff.js';
 
 export interface ScanOptions {
   paths: string[];
@@ -24,6 +25,8 @@ export interface ScanOptions {
   inlineSuppression?: boolean;
   /** Path to a baseline file — findings covered by it are dropped (only new findings reported). */
   baselinePath?: string;
+  /** Path to a unified diff — findings outside its added/modified lines are dropped (PR-bot mode). */
+  diffPath?: string;
 }
 
 export async function scan(
@@ -98,6 +101,30 @@ export async function scan(
     allSuspiciousKept = allSuspicious.filter((_, index) => keptIndexes.has(index));
   }
 
+  let diffFiltered = 0;
+  if (options.diffPath) {
+    // Same tandem index filter as the baseline: findings outside the diff
+    // never reach Stage 2, so a PR-bot scan pays LLM cost only for the
+    // change under review. Finding.file is cwd-relative (see
+    // createStage1Findings), matching git's repo-relative diff paths when
+    // the scan runs from the repository root.
+    const changed = await loadChangedLines(options.diffPath);
+    const keptIndexes = new Set(
+      stage1Findings
+        .map((finding, index) => ({ finding, index }))
+        .filter(({ finding }) => overlapsChangedLines(
+          changed,
+          finding.file,
+          finding.location.start.line,
+          finding.location.end.line,
+        ))
+        .map(({ index }) => index),
+    );
+    diffFiltered = stage1Findings.length - keptIndexes.size;
+    stage1Findings = stage1Findings.filter((_, index) => keptIndexes.has(index));
+    allSuspiciousKept = allSuspiciousKept.filter((_, index) => keptIndexes.has(index));
+  }
+
   let findings = stage1Findings;
   let dismissedFindings: Finding[] = [];
   let llmCalls = 0;
@@ -137,6 +164,7 @@ export async function scan(
     suspicious: allSuspicious.length,
     suppressed,
     baselined,
+    diffFiltered,
     findings,
     dismissedFindings,
     skipped,

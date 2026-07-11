@@ -40,6 +40,7 @@ export function createScanCommand(): Command {
     )
     .option('--no-inline-suppression', 'Ignore inline codeguard-ignore comments (report everything, to audit what they hide)')
     .option('--baseline <file>', 'Only report findings not covered by this baseline file')
+    .option('--diff <file>', 'Only report findings on lines added/modified by this unified diff (PR-bot mode; generate with `git diff base...head`)')
     .option('--write-baseline [file]', `Write current findings to a baseline file and exit 0 (default ${DEFAULT_BASELINE_FILE})`)
     .option('-v, --verbose', 'Verbose output', false)
     .action(async (paths: string[], opts) => {
@@ -56,6 +57,14 @@ export function createScanCommand(): Command {
           // findings; later unfiltered --baseline runs would resurface the
           // rest as "new". Baselines must come from unfiltered scans.
           console.error('Write baselines from an unfiltered scan: drop --severity when using --write-baseline.');
+          process.exitCode = 2;
+          return;
+        }
+        if (opts.diff && opts.writeBaseline) {
+          // A diff-filtered snapshot acknowledges only the changed lines;
+          // later unfiltered --baseline runs would resurface everything
+          // else as "new". Baselines must come from unfiltered scans.
+          console.error('Write baselines from an unfiltered scan: drop --diff when using --write-baseline.');
           process.exitCode = 2;
           return;
         }
@@ -84,6 +93,7 @@ export function createScanCommand(): Command {
           // commander maps --no-inline-suppression to inlineSuppression: false
           inlineSuppression: opts.inlineSuppression as boolean,
           baselinePath: opts.baseline as string | undefined,
+          diffPath: opts.diff as string | undefined,
         });
 
         if (opts.writeBaseline) {
